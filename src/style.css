@@ -1,0 +1,89 @@
+:root {
+  color: #3d3230;
+  background: #8fcb6b;
+  font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  font-synthesis: none;
+  touch-action: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body, main {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #8fcb6b;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+canvas {
+  width: 100vw;
+  height: 100dvh;
+  display: block;
+  image-rendering: auto;
+}
+
+button, a {
+  border: 0;
+  color: #3d3230;
+  background: #f4ebdd;
+  font: inherit;
+  text-decoration: none;
+}
+
+.round-button {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  width: 3rem;
+  height: 3rem;
+  border: .2rem solid #3d3230;
+  border-radius: 50%;
+  box-shadow: 0 .3rem 0 #3d3230;
+  cursor: pointer;
+}
+
+.round-button:active { transform: translateY(.2rem); box-shadow: 0 .1rem 0 #3d3230; }
+
+/* "new version" toast: a bouncing refresh pill, tap = reload */
+.update-toast {
+  top: auto;
+  right: auto;
+  bottom: max(1.2rem, env(safe-area-inset-bottom));
+  left: 50%;
+  translate: -50% 0;
+  font-size: 1.4rem;
+  background: #ffd45e;
+  animation: toast-bob 1.6s ease-in-out infinite;
+}
+.update-toast:active { transform: translateY(.2rem); }
+@keyframes toast-bob {
+  0%, 100% { margin-bottom: 0; }
+  50% { margin-bottom: .5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-toast { animation: none; }
+}
+
+dialog {
+  width: min(22rem, calc(100vw - 2rem));
+  border: .25rem solid #3d3230;
+  border-radius: 2rem;
+  padding: 1.2rem;
+  color: #3d3230;
+  background: #f4ebdd;
+  box-shadow: 0 1rem 0 rgb(61 50 48 / .2);
+  text-align: center;
+}
+
+dialog::backdrop { background: rgb(61 50 48 / .45); backdrop-filter: blur(.25rem); }
+dialog form { position: absolute; right: .7rem; top: .5rem; }
+.close { background: transparent; font-size: 2rem; cursor: pointer; }
+.save-mark { font-size: 2rem; color: #e4863b; }
+#save-qr { display: block; width: min(17rem, 100%); margin: .4rem auto 1rem; border-radius: 1rem; }
+#rescue-link { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; margin: auto; border: .2rem solid #3d3230; border-radius: 50%; font-size: 1.6rem; }

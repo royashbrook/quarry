@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#8FCB6B">
+  <title>Quarry rescue</title>
+  <style>
+    *{box-sizing:border-box}html,body{min-height:100%;margin:0}body{display:grid;place-items:center;background:#8FCB6B;color:#3D3230;font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif}main{width:min(28rem,calc(100vw - 2rem));padding:2rem;border:.3rem solid #3D3230;border-radius:3rem;background:#F4EBDD;box-shadow:0 1rem 0 #C9A176;text-align:center}.rock{font-size:6rem;line-height:1}.arrow{font-size:3rem;color:#E4863B}button,a{display:grid;place-items:center;width:6rem;height:6rem;margin:1rem auto;border:.25rem solid #3D3230;border-radius:50%;background:#FFD45E;color:#3D3230;font:700 3rem system-ui;text-decoration:none;box-shadow:0 .45rem 0 #3D3230;cursor:pointer}button:active{transform:translateY(.3rem);box-shadow:0 .15rem 0 #3D3230}.bad{filter:grayscale(1);opacity:.5}[hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="rock">⛏️</div>
+    <div class="arrow">↓</div>
+    <button id="restore" aria-label="Restore this save">✓</button>
+    <a id="play" href="/" hidden aria-label="Play Quarry">▶</a>
+  </main>
+  <script>
+    const key='quarry_save_v1',prefix='qy1.'
+    const button=document.querySelector('#restore'),play=document.querySelector('#play')
+    async function decode(code){
+      if(!code.startsWith(prefix))throw Error('bad code')
+      const value=code.slice(prefix.length).replaceAll('-','+').replaceAll('_','/')
+      const raw=atob(value.padEnd(Math.ceil(value.length/4)*4,'='))
+      const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0))
+      const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+      const save=JSON.parse(await new Response(stream).text())
+      if(save.version!==1||!Number.isFinite(save.coins)||typeof save.upgrades!=='object')throw Error('bad save')
+      return save
+    }
+    if(!location.hash.startsWith('#'+prefix)){button.disabled=true;button.classList.add('bad')}
+    button.addEventListener('click',async()=>{
+      try{
+        const incoming=await decode(location.hash.slice(1))
+        const held=JSON.parse(localStorage.getItem(key)||'null')
+        // never silently clobber a richer save: a second confirmed tap is required
+        if(held&&held.lifetime>incoming.lifetime&&!button.dataset.confirmed){
+          button.dataset.confirmed='1';button.textContent='!?';return
+        }
+        localStorage.setItem(key,JSON.stringify(incoming))
+        button.hidden=true
+        play.hidden=false
+      }catch{button.disabled=true;button.classList.add('bad')}
+    })
+  </script>
+</body>
+</html>

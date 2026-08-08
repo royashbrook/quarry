@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- quarry: a stacked-stone Q with a pickaxe tail. all original art. -->
+  <rect width="512" height="512" rx="112" fill="#8FCB6B"/>
+  <ellipse cx="256" cy="420" rx="170" ry="34" fill="#3D3230" opacity=".14"/>
+  <!-- boulder Q body: three stone lumps -->
+  <circle cx="216" cy="248" r="118" fill="#C7C3BD"/>
+  <circle cx="310" cy="210" r="86" fill="#A9A49C"/>
+  <circle cx="182" cy="180" r="80" fill="#D8D4CD"/>
+  <!-- Q hole -->
+  <circle cx="238" cy="230" r="58" fill="#8FCB6B"/>
+  <circle cx="238" cy="222" r="58" fill="#6FA352" opacity=".35"/>
+  <!-- pickaxe tail of the Q -->
+  <g transform="rotate(38 330 330)">
+    <rect x="318" y="270" width="26" height="150" rx="13" fill="#9C6B44"/>
+    <path d="M 268 282 Q 331 240 394 282 Q 331 262 268 282 Z" fill="#8D9096"/>
+  </g>
+  <!-- gold stud -->
+  <circle cx="176" cy="292" r="22" fill="#F2C84B"/>
+  <circle cx="170" cy="286" r="8" fill="#FFF" opacity=".55"/>
+</svg>
