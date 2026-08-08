@@ -2,7 +2,7 @@
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
 // a 13 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
-import { BUY_CHARGE_SECONDS, capacity, CHUTES, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, ORES, RAIL_X, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
+import { BUY_CHARGE_SECONDS, capacity, CHUTES, currentMine, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, mineMultiplier, MONUMENT, MONUMENT_STAGES, ORES, pickDamage, RAIL_X, SHOP, SURFACE, TRAVEL, travelPickNeeded, travelPrice, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
@@ -363,7 +363,8 @@ export class Renderer {
     this.shadow(spot.x, spot.y + 14, 56, 13)
     ctx.fillStyle = PALETTE.stoneLight
     roundRect(ctx, spot.x - 48, spot.y - 14, 96, 30, 10)
-    const affordable = state.save.helpers < HELPER_PRICES.length && state.save.coins >= HELPER_PRICES[state.save.helpers]
+    const mine = currentMine(state.save)
+    const affordable = mine.helpers < HELPER_PRICES.length && state.save.coins >= HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine)
     this.ring(spot.x, spot.y + 8, 58, 22, affordable)
     this.chargeArc(state, 'helper', spot)
   }
@@ -395,7 +396,7 @@ export class Renderer {
   private drawGate(state: GameState, index: number): void {
     const ctx = this.context
     const gatePos = GATES[index]
-    if (index < state.save.gates) return
+    if (index < currentMine(state.save).gates) return
     // a horizontal rock-wall floor sealing the stratum below
     ctx.fillStyle = '#6E6A5E'
     roundRect(ctx, 0, gatePos.y - 26, WORLD.width, 52, 0)
@@ -431,10 +432,35 @@ export class Renderer {
 
     const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y + 2 })
     if (onScreen(hire)) {
-      const maxed = state.save.helpers >= HELPER_PRICES.length
-      const price = HELPER_PRICES[state.save.helpers]
+      const mine = currentMine(state.save)
+      const maxed = mine.helpers >= HELPER_PRICES.length
+      const price = maxed ? 0 : HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine)
       const affordable = !maxed && state.save.coins >= price
-      this.text(maxed ? `👷${state.save.helpers} MAX` : `👷${state.save.helpers} · ${price}`, hire.x, hire.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `👷${mine.helpers} MAX` : `👷${mine.helpers} · $${price}`, hire.x, hire.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+    }
+
+    // the travel shaft banner: visible once both gates are open in this mine
+    if (currentMine(state.save).gates >= GATES.length) {
+      const shaft = project({ x: TRAVEL.x, y: TRAVEL.y - 60 })
+      if (onScreen(shaft)) {
+        const pickLevel = pickDamage(state) - 1
+        const needPick = travelPickNeeded(state.save.mine)
+        const price = travelPrice(state.save.mine)
+        const paid = currentMine(state.save).gatePaid
+        const ctx = this.context
+        ctx.fillStyle = 'rgba(61,50,48,.88)'
+        cssRound(ctx, shaft.x - 100, shaft.y - 18, 200, 46, 12)
+        if (pickLevel < needPick) {
+          this.text(`NEXT MINE: PICK LV${needPick} NEEDED`, shaft.x, shaft.y + 2, 13, '#F5A9A0', true)
+        } else {
+          this.text(`NEXT MINE  $${price - paid}`, shaft.x, shaft.y - 1, 14, '#FFD45E', true)
+          ctx.fillStyle = 'rgba(255,255,255,.25)'
+          cssRound(ctx, shaft.x - 86, shaft.y + 10, 172, 10, 5)
+          ctx.fillStyle = PALETTE.coin
+          const fill = paid / price
+          if (fill > 0) cssRound(ctx, shaft.x - 86, shaft.y + 10, 172 * fill, 10, 5)
+        }
+      }
     }
 
     const stagePrice = MONUMENT_STAGES[state.save.monument]
@@ -457,12 +483,14 @@ export class Renderer {
       }
     }
 
-    const next = GATES[state.save.gates]
+    const mineState = currentMine(state.save)
+    const next = GATES[mineState.gates]
     if (next) {
       const gate = project({ x: next.x, y: next.y - 56 })
       if (onScreen(gate)) {
-        const remaining = next.price - state.save.gatePaid
-        const fill = state.save.gatePaid / next.price
+        const price = next.price * mineMultiplier(state.save.mine)
+        const remaining = price - mineState.gatePaid
+        const fill = mineState.gatePaid / price
         const ctx = this.context
         ctx.fillStyle = 'rgba(61,50,48,.85)'
         cssRound(ctx, gate.x - 88, gate.y - 18, 176, 42, 12)
@@ -513,8 +541,8 @@ export class Renderer {
         this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, '#FFD45E', true)
       }
     }
-    // depth marker bottom-left
-    this.text(`ZONE ${Math.min(3, state.save.gates + 1)}/3`, pad + 40, view.cssHeight - 18, 13, 'rgba(244,235,221,.85)', true)
+    // depth marker bottom-left: which mine, which stratum
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, view.cssHeight - 18, 13, 'rgba(244,235,221,.85)', true)
     // sound status, only when something is off: muted or never woken
     const soundState = this.audioState()
     if (soundState !== 'running') {
