@@ -17,6 +17,7 @@ declare global {
       joystickOrigin: () => Point | null
       pause: (on: boolean) => void
       setTime: (seconds: number) => void
+      audioState: () => string
     }
   }
 }
@@ -102,7 +103,19 @@ muteButton?.addEventListener('click', () => {
   localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
   syncMute()
 })
-addEventListener('pointerdown', () => { if (!audio) audio = new AudioContext() }, { once: true })
+function wakeAudio(): void {
+  if (!audio) {
+    audio = new AudioContext()
+    // ios mutes webaudio under the ringer switch unless the page declares
+    // itself playback audio (ios 17+); harmless everywhere else
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+    if (session) session.type = 'playback'
+  }
+  if (audio.state === 'suspended') void audio.resume()
+}
+addEventListener('pointerdown', wakeAudio)
+addEventListener('keydown', wakeAudio)
+document.addEventListener('visibilitychange', () => { if (!document.hidden && audio?.state === 'suspended') void audio.resume() })
 
 const TONES: Record<string, [number, number, OscillatorType]> = {
   swing: [180, 0.05, 'square'],
@@ -156,4 +169,5 @@ window.__quarry = {
   joystickOrigin: () => (controls.joystick.active ? { ...controls.joystick.origin } : null),
   pause: on => { paused = on },
   setTime: seconds => { state.time = seconds },
+  audioState: () => (muted ? 'muted' : audio?.state ?? 'none'),
 }
