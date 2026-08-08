@@ -73,7 +73,10 @@ export type GameState = {
   sellTimer: number
   gateTimer: number
   monumentTimer: number
-  shopCooldown: number
+  // deliberate buying (#4): stand STILL on a pad to charge a purchase; walking
+  // through never buys. after a buy the pad latches until you step away.
+  buyCharge: { id: string; t: number } | null
+  buyLatch: string | null
   save: SaveV1
 }
 
@@ -84,21 +87,23 @@ export const SURFACE = 340
 export const ZONE_H = 800
 export const WORLD = { width: 540, height: SURFACE + ZONE_H * 3 }
 
-export const DEPOT = { x: 120, y: 240 }
+export const DEPOT = { x: 100, y: 250 }
+// the shop column hugs the right edge in one vertical line: you can reach any
+// pad without your path crossing another, and buying is deliberate (see shop())
 export const SHOP: Record<UpgradeId, Point> = {
-  pick: { x: 300, y: 190 },
-  pack: { x: 440, y: 240 },
-  boots: { x: 360, y: 300 },
+  pick: { x: 462, y: 205 },
+  pack: { x: 462, y: 265 },
+  boots: { x: 462, y: 325 },
 }
 // hired auto-miners: they mine and sell WITHOUT you, at half value, and never
 // count toward contracts, so playing yourself always beats watching
-export const HELPER_PAD: Point = { x: 140, y: 320 }
+export const HELPER_PAD: Point = { x: 462, y: 385 }
 export const HELPER_PRICES = [100, 400, 1600]
 export const HELPER_CAPACITY = 4
 
 // the monument: the long-run coin sink. five build stages poured like a gate,
 // standing at its pad, each stage visibly grows the statue on the skyline.
-export const MONUMENT: Point = { x: 80, y: 165 }
+export const MONUMENT: Point = { x: 330, y: 168 }
 export const MONUMENT_STAGES = [400, 1200, 3500, 9000, 20000]
 
 export const GATES = [
@@ -161,7 +166,8 @@ export function createGame(save: SaveV1 = defaultSave()): GameState {
     sellTimer: 0,
     gateTimer: 0,
     monumentTimer: 0,
-    shopCooldown: 0,
+    buyCharge: null,
+    buyLatch: null,
     save: structuredClone(save),
   }
   if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, state.save.gates)
@@ -185,17 +191,17 @@ const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
 /** The stratum a given depth sits in; gates block digging past their floor. */
 export const zoneOf = (y: number): number => Math.max(0, Math.floor((y - SURFACE) / ZONE_H))
 
+export const BUY_CHARGE_SECONDS = 0.7
+
 export function step(state: GameState, seconds: number, input: Input = { x: 0, y: 0 }): void {
   const dt = Math.min(Math.max(seconds, 0), 0.05)
   state.time += dt
-  state.shopCooldown = Math.max(0, state.shopCooldown - dt)
 
   movePlayer(state, dt, input)
   mine(state, dt)
   updateChips(state, dt)
   sell(state, dt)
-  shop(state)
-  hireHelper(state)
+  chargeBuys(state, dt)
   updateHelpers(state, dt)
   monument(state, dt)
   gate(state, dt)
@@ -306,22 +312,48 @@ function sell(state: GameState, dt: number): void {
   }
 }
 
-// shop pads buy instantly when affordable; the cooldown stops a single stand
-// from chaining accidental multi-buys
-function shop(state: GameState): void {
-  if (state.shopCooldown > 0) return
+// every purchasable pad, priced and gated in one place for the charge loop
+function buyablePads(state: GameState): { id: string; at: Point; price: number; buy: () => void }[] {
+  const pads: { id: string; at: Point; price: number; buy: () => void }[] = []
   for (const id of Object.keys(SHOP) as UpgradeId[]) {
     const level = state.save.upgrades[id]
     if (level >= UPGRADES[id].max) continue
-    const price = upgradePrice(id, level)
-    if (state.save.coins < price || distance(SHOP[id], state.player) > 66) continue
-    state.save.coins -= price
-    state.save.upgrades[id] = level + 1
-    state.shopCooldown = 1
-    state.pings.push('buy')
-    state.floats.push({ x: SHOP[id].x, y: SHOP[id].y - 60, text: `-${price}`, age: 0, kind: 'coin' })
-    return
+    pads.push({
+      id,
+      at: SHOP[id],
+      price: upgradePrice(id, level),
+      buy: () => { state.save.upgrades[id] = level + 1 },
+    })
   }
+  if (state.save.helpers < HELPER_PRICES.length) {
+    pads.push({
+      id: 'helper',
+      at: HELPER_PAD,
+      price: HELPER_PRICES[state.save.helpers],
+      buy: () => { state.save.helpers += 1; spawnHelper(state) },
+    })
+  }
+  return pads
+}
+
+// stand still on an affordable pad: a ring charges for BUY_CHARGE_SECONDS and
+// then the purchase happens, once. walking resets the charge; walking THROUGH
+// a pad never buys anything. the latch stops a held stand from chain-buying:
+// you must step off the pad before it will charge again.
+function chargeBuys(state: GameState, dt: number): void {
+  const pad = buyablePads(state).find(candidate =>
+    distance(candidate.at, state.player) < 60 && state.save.coins >= candidate.price)
+  if (state.buyLatch && (!pad || pad.id !== state.buyLatch)) state.buyLatch = null
+  if (!pad || state.player.moving || pad.id === state.buyLatch) { state.buyCharge = null; return }
+  if (state.buyCharge?.id !== pad.id) state.buyCharge = { id: pad.id, t: 0 }
+  state.buyCharge.t += dt
+  if (state.buyCharge.t < BUY_CHARGE_SECONDS) return
+  state.buyCharge = null
+  state.buyLatch = pad.id
+  state.save.coins -= pad.price
+  pad.buy()
+  state.pings.push('buy')
+  state.floats.push({ x: pad.at.x, y: pad.at.y - 60, text: `-${pad.price}`, age: 0, kind: 'coin' })
 }
 
 // gates swallow coins over time while you stand at them: progress persists in
@@ -348,18 +380,6 @@ function spawnHelper(state: GameState): void {
   state.helpers.push({ x: DEPOT.x + 40 + state.helpers.length * 20, y: DEPOT.y + 40, stack: [], rockId: null, mineTimer: 0, sellTimer: 0 })
 }
 
-// the helper pad hires like a shop pad: stand on it with the price
-function hireHelper(state: GameState): void {
-  if (state.shopCooldown > 0 || state.save.helpers >= HELPER_PRICES.length) return
-  const price = HELPER_PRICES[state.save.helpers]
-  if (state.save.coins < price || distance(HELPER_PAD, state.player) > 66) return
-  state.save.coins -= price
-  state.save.helpers += 1
-  state.shopCooldown = 1
-  spawnHelper(state)
-  state.pings.push('buy')
-  state.floats.push({ x: HELPER_PAD.x, y: HELPER_PAD.y - 60, text: `-${price}`, age: 0, kind: 'coin' })
-}
 
 // helpers walk to the nearest live rock in the open world, chip one chunk at a
 // time into a small stack, then walk it to the depot and sell at HALF value.
