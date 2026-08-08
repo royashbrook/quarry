@@ -58,6 +58,8 @@ export type SaveV1 = {
 export type Ping = 'swing' | 'break' | 'coin' | 'buy' | 'gate' | 'contract'
 export type Spark = Point & { vx: number; vy: number; age: number }
 export type Helper = Point & { stack: Ore[]; rockId: number | null; mineTimer: number; sellTimer: number }
+// a chunk riding the rail to the depot: pays out when remaining hits zero
+export type Transit = { ore: Ore; remaining: number; total: number; fromY: number }
 
 export type GameState = {
   time: number
@@ -67,10 +69,12 @@ export type GameState = {
   chips: Chip[]
   sparks: Spark[]
   helpers: Helper[]
+  transit: Transit[]
   floats: FloatText[]
   shake: number // seconds of screen shake remaining
   pings: Ping[]
   sellTimer: number
+  chuteTimer: number
   gateTimer: number
   monumentTimer: number
   // deliberate buying (#4): stand STILL on a pad to charge a purchase; walking
@@ -105,6 +109,14 @@ export const HELPER_CAPACITY = 4
 // standing at its pad, each stage visibly grows the statue on the skyline.
 export const MONUMENT: Point = { x: 330, y: 168 }
 export const MONUMENT_STAGES = [400, 1200, 3500, 9000, 20000]
+
+export const CHUTES: Point[] = [
+  { x: 466, y: 900 },
+  { x: 74, y: SURFACE + ZONE_H + 520 },
+  { x: 466, y: SURFACE + ZONE_H * 2 + 520 },
+]
+export const CHUTE_RATE = 0.75
+export const RAIL_X = 524
 
 export const GATES = [
   { x: 270, y: SURFACE + ZONE_H, price: 150 },
@@ -160,10 +172,12 @@ export function createGame(save: SaveV1 = defaultSave()): GameState {
     chips: [],
     sparks: [],
     helpers: [],
+    transit: [],
     floats: [],
     shake: 0,
     pings: [],
     sellTimer: 0,
+    chuteTimer: 0,
     gateTimer: 0,
     monumentTimer: 0,
     buyCharge: null,
@@ -201,7 +215,9 @@ export function step(state: GameState, seconds: number, input: Input = { x: 0, y
   mine(state, dt)
   updateChips(state, dt)
   sell(state, dt)
+  chute(state, dt)
   chargeBuys(state, dt)
+  updateTransit(state, dt)
   updateHelpers(state, dt)
   monument(state, dt)
   gate(state, dt)
@@ -310,6 +326,36 @@ function sell(state: GameState, dt: number): void {
       state.pings.push('contract')
     }
   }
+}
+
+// stand by a stratum's chute with a stack: chunks drop in one per beat and ride
+// the rail up. deeper chutes take longer to pay. never credits contracts.
+function chute(state: GameState, dt: number): void {
+  const spot = CHUTES.find(candidate => distance(candidate, state.player) < 70)
+  if (!spot || state.stack.length === 0) { state.chuteTimer = 0; return }
+  state.chuteTimer += dt
+  if (state.chuteTimer < 0.12) return
+  state.chuteTimer = 0
+  const ore = state.stack.pop() as Ore
+  const seconds = 1.5 + spot.y / 300 // depth = travel time
+  state.transit.push({ ore, remaining: seconds, total: seconds, fromY: spot.y })
+  if (state.transit.length > 80) state.transit.shift() // hard cap, oldest pays never: unreachable in play
+  state.pings.push('swing')
+  state.floats.push({ x: spot.x, y: spot.y - 46, text: '↑', age: 0, kind: 'ore' })
+}
+
+function updateTransit(state: GameState, dt: number): void {
+  for (const item of state.transit) {
+    item.remaining -= dt
+    if (item.remaining <= 0) {
+      const value = Math.max(1, Math.floor(ORES[item.ore].value * CHUTE_RATE))
+      state.save.coins += value
+      state.save.lifetime += value
+      state.pings.push('coin')
+      state.floats.push({ x: DEPOT.x + 40, y: DEPOT.y - 40, text: `+${value}`, age: 0, kind: 'ore' })
+    }
+  }
+  state.transit = state.transit.filter(item => item.remaining > 0)
 }
 
 // every purchasable pad, priced and gated in one place for the charge loop
