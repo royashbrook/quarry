@@ -50,6 +50,8 @@ button, a {
 
 .round-button:active { transform: translateY(.2rem); box-shadow: 0 .1rem 0 #3d3230; }
 
+.mute-button { top: max(4.6rem, calc(env(safe-area-inset-top) + 3.6rem)); font-size: 1rem; }
+
 /* "new version" toast: a bouncing refresh pill, tap = reload */
 .update-toast {
   top: auto;

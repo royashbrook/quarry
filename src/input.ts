@@ -7,7 +7,7 @@ export class Controls {
   private keys = new Set<string>()
   private pointer: number | null = null
 
-  constructor(private canvas: HTMLCanvasElement, private view: () => Viewport, private cameraX: () => number) {
+  constructor(private canvas: HTMLCanvasElement, private view: () => Viewport, private cameraY: () => number) {
     addEventListener('keydown', event => {
       const game = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
       if (!game.includes(event.key.toLowerCase())) return // only consume our keys
@@ -62,6 +62,6 @@ export class Controls {
     // same live viewport the renderer draws through, plus the camera pan
     const rect = this.canvas.getBoundingClientRect()
     const world = clientToWorld(this.view(), event.clientX - rect.left, event.clientY - rect.top)
-    return { x: world.x + this.cameraX(), y: world.y }
+    return { x: world.x, y: world.y + this.cameraY() }
   }
 }

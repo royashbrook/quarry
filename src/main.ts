@@ -1,6 +1,6 @@
 import QRCode from 'qrcode'
 import './style.css'
-import { createGame, runFor, step, ZONE_W, type GameState, type Point } from './engine'
+import { createGame, runFor, step, WORLD, type GameState, type Point } from './engine'
 import { Controls } from './input'
 import { Renderer } from './render'
 import { loadSave, rescueUrl, storeSave } from './save'
@@ -13,7 +13,7 @@ declare global {
       movePlayer: (point: Point) => void
       advance: (seconds: number, input?: Point) => void
       viewport: () => Viewport
-      cameraX: () => number
+      cameraY: () => number
       joystickOrigin: () => Point | null
       pause: (on: boolean) => void
       setTime: (seconds: number) => void
@@ -38,16 +38,14 @@ fitViewport()
 addEventListener('resize', fitViewport)
 new ResizeObserver(fitViewport).observe(document.body)
 
-// the camera pans the wide world: keep the miner centered, clamped to the
-// world's open span, eased so zone transitions glide instead of snapping
-let cameraX = 0
+// the camera follows the miner DOWN the dig, eased, clamped to the world
+let cameraY = 0
 function updateCamera(dt: number): void {
-  const openWidth = ZONE_W * (state.save.gates + 1)
-  const target = Math.max(0, Math.min(state.player.x - VIEW.width / 2, openWidth - viewport.viewWidth + (viewport.viewWidth - VIEW.width) / 2))
-  cameraX += (target - cameraX) * Math.min(1, dt * 6)
+  const target = Math.max(0, Math.min(state.player.y - VIEW.height * 0.45, WORLD.height - viewport.viewHeight + (viewport.viewHeight - VIEW.height) / 2))
+  cameraY += (target - cameraY) * Math.min(1, dt * 6)
 }
 
-const controls = new Controls(canvas, () => viewport, () => cameraX)
+const controls = new Controls(canvas, () => viewport, () => cameraY)
 const renderer = new Renderer(canvas)
 let previous = performance.now()
 let saveClock = 0
@@ -60,7 +58,8 @@ function frame(now: number): void {
     step(state, elapsed, controls.vector)
     updateCamera(elapsed)
   }
-  renderer.draw(state, controls.joystick, viewport, cameraX)
+  state.pings.splice(0).forEach(bleep) // drain feel events even while paused
+  renderer.draw(state, controls.joystick, viewport, cameraY)
   saveClock += elapsed
   if (saveClock >= 1) {
     saveClock = 0
@@ -90,6 +89,44 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js'))
 }
 
+// tiny synth: the engine queues pings, we bleep them. no assets, one oscillator
+// per sound, context created on first gesture (autoplay policy), mute persists.
+const MUTE_KEY = 'quarry_mute'
+const muteButton = document.querySelector<HTMLButtonElement>('#mute-button')
+let muted = localStorage.getItem(MUTE_KEY) === '1'
+let audio: AudioContext | null = null
+const syncMute = () => { if (muteButton) muteButton.textContent = muted ? '🔇' : '🔊' }
+syncMute()
+muteButton?.addEventListener('click', () => {
+  muted = !muted
+  localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+  syncMute()
+})
+addEventListener('pointerdown', () => { if (!audio) audio = new AudioContext() }, { once: true })
+
+const TONES: Record<string, [number, number, OscillatorType]> = {
+  swing: [180, 0.05, 'square'],
+  break: [90, 0.16, 'sawtooth'],
+  coin: [880, 0.07, 'sine'],
+  buy: [520, 0.12, 'triangle'],
+  gate: [130, 0.4, 'sawtooth'],
+  contract: [660, 0.3, 'triangle'],
+}
+function bleep(kind: string): void {
+  if (muted || !audio || audio.state !== 'running') return
+  const [freq, seconds, shape] = TONES[kind] ?? TONES.coin
+  const osc = audio.createOscillator()
+  const gain = audio.createGain()
+  osc.type = shape
+  osc.frequency.value = freq
+  if (kind === 'gate' || kind === 'contract') osc.frequency.exponentialRampToValueAtTime(freq * 2, audio.currentTime + seconds)
+  gain.gain.setValueAtTime(0.08, audio.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + seconds)
+  osc.connect(gain).connect(audio.destination)
+  osc.start()
+  osc.stop(audio.currentTime + seconds)
+}
+
 // update toast: probe the served shell, compare to the booted shell, offer a
 // one-tap reload. the probe bypasses the worker cache via ?update-probe.
 const updateToast = document.querySelector<HTMLButtonElement>('#update-toast')
@@ -115,7 +152,7 @@ window.__quarry = {
   movePlayer: point => { state.player.x = point.x; state.player.y = point.y },
   advance: (seconds, input) => runFor(state, seconds, input),
   viewport: () => ({ ...viewport }),
-  cameraX: () => cameraX,
+  cameraY: () => cameraY,
   joystickOrigin: () => (controls.joystick.active ? { ...controls.joystick.origin } : null),
   pause: on => { paused = on },
   setTime: seconds => { state.time = seconds },

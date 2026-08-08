@@ -1,57 +1,24 @@
 import { expect, test } from '@playwright/test'
 
-// the camera pans the wide world and input maps through the SAME pan, so a
-// pointer press on a visible spot lands on that world point at any camera x.
-test('camera follows into zone 2 and pointer mapping tracks the pan', async ({ page }) => {
-  await page.setViewportSize({ width: 768, height: 1024 })
+// the camera pans DOWN the dig and input maps through the same pan, so a
+// pointer press on a visible spot lands on that world point at any depth.
+test('camera follows the dig and pointer mapping tracks the pan', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.locator('canvas')).toBeVisible()
 
-  // open the first gate instantly via the sim, then walk in
+  // deep in zone 1 (still above the first gate): the camera must follow
   await page.evaluate(() => {
-    const game = window.__quarry
-    const state = game.snapshot()
-    void state
-    game.movePlayer({ x: 900, y: 400 })
-  })
-  await page.evaluate(() => {
-    const game = window.__quarry
-    // cheat the coins in through the sim: mine-and-sell farmed offline would
-    // take minutes; the gate pour itself is what we are testing
-    for (let i = 0; i < 40; i++) {
-      const snap = game.snapshot()
-      if (snap.save.gates > 0) break
-      game.advance(5)
-      if (game.snapshot().save.coins === 0) {
-        // grant by selling a mined stack: fastest legal route, gold zone locked,
-        // so farm the coal rock by the gate
-        const coal = game.snapshot().rocks.find(rock => rock.ore === 'coal')!
-        game.movePlayer({ x: coal.x - 40, y: coal.y })
-        game.advance(6)
-        game.movePlayer({ x: 175, y: 460 })
-        game.advance(4)
-        game.movePlayer({ x: 900, y: 400 })
-      }
-    }
-    return game.snapshot().save.gates
-  })
-
-  const opened = await page.evaluate(() => window.__quarry.snapshot().save.gates)
-  expect(opened).toBeGreaterThanOrEqual(1)
-
-  // walk deep into zone 2: the camera must follow
-  await page.evaluate(() => {
-    window.__quarry.movePlayer({ x: 1400, y: 400 })
-    window.__quarry.advance(1, { x: 1, y: 0 })
+    window.__quarry.movePlayer({ x: 270, y: 1000 })
+    window.__quarry.advance(1, { x: 0, y: 0 })
   })
   await page.waitForTimeout(700) // camera eases toward the player
-  const cameraX = await page.evaluate(() => window.__quarry.cameraX())
-  expect(cameraX).toBeGreaterThan(300)
+  const cameraY = await page.evaluate(() => window.__quarry.cameraY())
+  expect(cameraY).toBeGreaterThan(200)
 
   // freeze the easing camera so both reads below see the same pan
   await page.evaluate(() => window.__quarry.pause(true))
 
-  // real pointerdown at the center of the screen maps to a world x offset by the pan
   const box = (await page.locator('canvas').boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
@@ -60,7 +27,32 @@ test('camera follows into zone 2 and pointer mapping tracks the pan', async ({ p
   expect(origin).not.toBeNull()
   const expected = await page.evaluate(() => {
     const view = window.__quarry.viewport()
-    return window.__quarry.cameraX() + view.originX + view.viewWidth / 2
+    return window.__quarry.cameraY() + view.originY + view.viewHeight / 2
   })
-  expect(origin!.x).toBeCloseTo(expected, 0)
+  expect(origin!.y).toBeCloseTo(expected, 0)
+})
+
+// portrait is the design target: at 390x844 every screen-space text draws at
+// 13+ css px by construction; this asserts the hud objects are actually there
+test('phone portrait renders the hud readable and the world fills the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(page.locator('canvas')).toBeVisible()
+  const checks = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas')!
+    const rect = canvas.getBoundingClientRect()
+    const view = window.__quarry.viewport()
+    const opaque = (x: number, y: number) => canvas.getContext('2d')!.getImageData(x, y, 1, 1).data[3] === 255
+    return {
+      fills: Math.round(rect.width) === innerWidth && Math.round(rect.height) === innerHeight,
+      corners: [opaque(0, 0), opaque(canvas.width - 1, canvas.height - 1)],
+      scale: view.scale,
+      contract: window.__quarry.snapshot().save.contract !== null,
+    }
+  })
+  expect(checks.fills).toBe(true)
+  expect(checks.corners).toEqual([true, true])
+  expect(checks.contract).toBe(true)
+  // 390 css px / 540 world = .72: world objects still readable, text is css-fixed anyway
+  expect(checks.scale).toBeCloseTo(390 / 540, 2)
 })

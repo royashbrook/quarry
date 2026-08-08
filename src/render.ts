@@ -1,27 +1,28 @@
-// quarry's renderer: everything is drawn vector-style in canvas, no image
-// assets at all. flat-shaded rounded shapes, y-sorted with the shared depth
-// rule, one camera pan for the wide world. reads GameState, never writes it.
-import { byDepth, depthScale } from './depth'
-import type { GameState, Ore, Point, Rock, UpgradeId } from './engine'
-import { capacity, DEPOT, FLOOR, GATES, ORES, SHOP, upgradePrice, UPGRADES, ZONE_W } from './engine'
-import type { Viewport } from './viewport'
+// quarry's renderer, portrait-first: the world is a vertical dig, the camera
+// pans down through strata, and EVERY piece of text draws in SCREEN space with
+// a 13 css px floor so a phone can actually read it. all art is canvas vectors.
+import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
+import { capacity, DEPOT, GATES, ORES, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
+import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
 
 export const PALETTE = {
-  grass: '#8FCB6B',
-  grassFar: '#7ABB5D',
-  dirt: '#C9A176',
-  path: '#DDBE92',
-  ink: '#3D3230',
   sky: '#BDE3F0',
+  grass: '#8FCB6B',
+  topsoil: '#C9A176',
+  stoneStrata: '#8E8A82',
+  deepStrata: '#5F5A6E',
+  strataLine: 'rgba(61,50,48,.18)',
+  ink: '#3D3230',
+  paper: '#F4EBDD',
   coin: '#FFD45E',
   coinDeep: '#E2A93B',
   wood: '#9C6B44',
   stoneLight: '#C7C3BD',
   ore: {
     stone: '#A9A49C',
-    coal: '#4E4A50',
+    coal: '#3E3A42',
     copper: '#D98E4A',
     gold: '#F2C84B',
     crystal: '#7BD8D0',
@@ -41,84 +42,97 @@ export class Renderer {
     this.context = context
   }
 
-  draw(state: GameState, joystick: Joystick, view: Viewport, cameraX: number): void {
+  draw(state: GameState, joystick: Joystick, view: Viewport, cameraY: number): void {
     const ctx = this.context
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
     const k = view.dpr * view.scale
-    ctx.setTransform(k, 0, 0, k, (-view.originX - cameraX) * k, -view.originY * k)
+    const amp = this.reducedMotion ? 0.3 : 1
+    const shakeX = state.shake > 0 ? Math.sin(state.time * 71) * state.shake * 20 * amp : 0
+    const shakeY = state.shake > 0 ? Math.cos(state.time * 83) * state.shake * 14 * amp : 0
+    ctx.setTransform(k, 0, 0, k, (-view.originX + shakeX) * k, (-view.originY - cameraY + shakeY) * k)
 
-    this.drawGround(state, view, cameraX)
+    this.drawGround(state, view, cameraY)
 
     const things: { anchor: Point; draw: () => void }[] = [
       { anchor: DEPOT, draw: () => this.drawDepot(state) },
       ...(Object.keys(SHOP) as UpgradeId[]).map(id => ({ anchor: SHOP[id], draw: () => this.drawShopPad(state, id) })),
-      ...GATES.map((gatePos, index) => ({ anchor: gatePos, draw: () => this.drawGate(state, index) })),
-      ...state.rocks.filter(rock => rock.respawn === 0).map(rock => ({ anchor: rock, draw: () => this.drawRock(state, rock) })),
+      ...state.rocks.filter(rock => rock.respawn === 0).map(rock => ({ anchor: rock, draw: () => this.drawRock(rock) })),
       { anchor: state.player, draw: () => this.drawMiner(state) },
     ]
-    things.sort(byDepth).forEach(item => this.grounded(item.anchor, item.draw))
-
+    things.sort((a, b) => a.anchor.y - b.anchor.y).forEach(item => item.draw())
+    GATES.forEach((gatePos, index) => this.drawGate(state, index)) // walls draw over everything at their line
     state.chips.forEach(chip => this.drawChip(chip.x, chip.y, chip.ore))
-    state.floats.forEach(item => this.drawFloat(item.x, item.y, item.text, item.age, item.kind))
-    this.drawHud(state, view, cameraX)
-    if (joystick.active) this.drawJoystick(joystick, cameraX)
+    this.drawSparks(state.sparks)
+
+    // === screen space from here: constant css sizes, readable on any phone ===
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0)
+    state.floats.forEach(item => {
+      const client = worldToClient(view, { x: item.x, y: item.y - cameraY })
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, 1 - item.age)
+      this.text(item.text, client.x, client.y, item.kind === 'coin' ? 18 : 15, item.kind === 'coin' ? '#8A6408' : '#FFF', true)
+      ctx.restore()
+    })
+    this.worldLabels(state, view, cameraY)
+    this.drawHud(state, view)
+    if (joystick.active) this.drawJoystick(joystick, view, cameraY)
   }
 
-  private grounded(anchor: Point, draw: () => void): void {
+  private drawGround(state: GameState, view: Viewport, cameraY: number): void {
     const ctx = this.context
-    const scale = depthScale(anchor.y)
-    ctx.save()
-    ctx.translate(anchor.x, anchor.y)
-    ctx.scale(scale, scale)
-    ctx.translate(-anchor.x, -anchor.y)
-    draw()
-    ctx.restore()
-  }
-
-  private drawGround(state: GameState, view: Viewport, cameraX: number): void {
-    const ctx = this.context
-    const left = view.originX + cameraX
-    const top = view.originY
+    const left = view.originX
+    const top = view.originY + cameraY
     const right = left + view.viewWidth
     const bottom = top + view.viewHeight
-    // sky band above the cliff line, then the quarry floor
-    ctx.fillStyle = PALETTE.sky
-    ctx.fillRect(left, top, view.viewWidth, FLOOR.top - 40 - top)
-    ctx.fillStyle = PALETTE.grassFar
-    ctx.fillRect(left, FLOOR.top - 40, view.viewWidth, 46)
-    ctx.fillStyle = PALETTE.grass
-    ctx.fillRect(left, FLOOR.top + 6, view.viewWidth, bottom - FLOOR.top - 6)
-    // dirt path along the depot row, receding rows for depth
-    ctx.fillStyle = PALETTE.path
-    ctx.beginPath(); ctx.ellipse(DEPOT.x, DEPOT.y + 8, 150, 52, 0, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = 'rgba(61,50,48,.07)'
-    ctx.lineWidth = 2
-    let rowY = FLOOR.top + 14
-    let gap = 10
-    while (rowY < bottom) {
-      ctx.beginPath(); ctx.moveTo(left, rowY); ctx.lineTo(right, rowY); ctx.stroke()
-      rowY += gap
-      gap *= 1.24
+    // strata bands: sky, grass lip, topsoil, stone, deep
+    const bands: [number, number, string][] = [
+      [-2000, 150, PALETTE.sky],
+      [150, 190, PALETTE.grass],
+      [190, SURFACE + ZONE_H, PALETTE.topsoil],
+      [SURFACE + ZONE_H, SURFACE + ZONE_H * 2, PALETTE.stoneStrata],
+      [SURFACE + ZONE_H * 2, WORLD.height + 2000, PALETTE.deepStrata],
+    ]
+    for (const [from, to, color] of bands) {
+      const y0 = Math.max(top, from)
+      const y1 = Math.min(bottom, to)
+      if (y1 <= y0) continue
+      ctx.fillStyle = color
+      ctx.fillRect(left, y0, view.viewWidth, y1 - y0)
     }
-    // grass tufts, fixed pattern so nothing shimmers
-    ctx.fillStyle = 'rgba(61,50,48,.06)'
-    for (let tx = Math.floor(left / 120) * 120; tx < right; tx += 120) {
-      const ty = FLOOR.top + 40 + ((tx * 7919) % 300)
-      if (ty < bottom) { ctx.beginPath(); ctx.ellipse(tx, ty, 14, 5, 0, 0, Math.PI * 2); ctx.fill() }
+    // sediment lines, fixed pattern, and buried speckles for texture
+    ctx.strokeStyle = PALETTE.strataLine
+    ctx.lineWidth = 2
+    for (let y = Math.max(230, Math.floor(top / 90) * 90); y < bottom; y += 90) {
+      ctx.beginPath()
+      ctx.moveTo(left, y + Math.sin(y) * 6)
+      ctx.quadraticCurveTo((left + right) / 2, y + 10 + Math.sin(y * 3) * 6, right, y + Math.sin(y * 1.7) * 6)
+      ctx.stroke()
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.08)'
+    for (let y = Math.floor(top / 130) * 130; y < bottom; y += 130) {
+      const x = 60 + ((y * 7919) % 420)
+      if (y > 230) { ctx.beginPath(); ctx.arc(x, y + 40, 7, 0, Math.PI * 2); ctx.fill() }
+    }
+    // deep zone gets faint crystal glints
+    if (bottom > SURFACE + ZONE_H * 2) {
+      ctx.fillStyle = 'rgba(123,216,208,.25)'
+      for (let y = Math.max(top, SURFACE + ZONE_H * 2); y < bottom; y += 170) {
+        const x = 90 + ((y * 104729) % 380)
+        ctx.beginPath(); ctx.arc(x, y + 60, 4, 0, Math.PI * 2); ctx.fill()
+      }
     }
   }
 
-  private drawRock(state: GameState, rock: Rock): void {
+  private drawRock(rock: Rock): void {
     const ctx = this.context
     const wobble = this.reducedMotion ? 0 : Math.sin(rock.wobble * 14) * rock.wobble * 0.06
     const healthy = rock.hp / ORES[rock.ore].hp
-    const size = 34 + 14 * healthy // rocks visibly shrink as they chip away
-    this.shadow(rock.x, rock.y + 6, size + 10, 12)
+    const size = 40 + 18 * healthy
+    this.shadow(rock.x, rock.y + 8, size + 10, 13)
     ctx.save()
     ctx.translate(rock.x, rock.y)
     ctx.rotate(wobble)
-    // boulder: three overlapping rounded lumps, facet highlight, ore studs
     ctx.fillStyle = PALETTE.ore[rock.ore]
     lump(ctx, -size * 0.4, -size * 0.35, size * 0.62)
     lump(ctx, size * 0.34, -size * 0.3, size * 0.55)
@@ -138,20 +152,17 @@ export class Renderer {
     const player = state.player
     const stride = player.moving && !this.reducedMotion ? Math.sin(state.time * 12) : 0
     const bob = Math.abs(stride) * -5
-    this.shadow(player.x, player.y + 4, 40, 11)
+    this.shadow(player.x, player.y + 4, 42, 11)
     ctx.save()
     ctx.translate(player.x, player.y + bob)
     ctx.scale(player.facing, 1)
-    // legs
     ctx.fillStyle = '#4A5A78'
     roundRect(ctx, -20, -34, 17, 36, 8, stride * 6)
     roundRect(ctx, 3, -34, 17, 36, 8, -stride * 6)
-    // body
     ctx.fillStyle = '#E4863B'
     roundRect(ctx, -25, -78, 50, 52, 16)
     ctx.fillStyle = '#F2B04A'
     roundRect(ctx, -25, -78, 50, 18, 9)
-    // head + hard hat + face
     ctx.fillStyle = '#F2C9A2'
     ctx.beginPath(); ctx.arc(0, -102, 26, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = '#F7D14A'
@@ -163,7 +174,6 @@ export class Renderer {
     ctx.strokeStyle = PALETTE.ink
     ctx.lineWidth = 3
     ctx.beginPath(); ctx.arc(14, -92, 6, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke()
-    // pickaxe arm: swings while mining, rests on the shoulder otherwise
     const swingPhase = player.swinging ? Math.sin((player.swing / 0.55) * Math.PI) : 0
     ctx.save()
     ctx.translate(18, -70)
@@ -177,40 +187,43 @@ export class Renderer {
     ctx.fill()
     ctx.restore()
     ctx.restore()
-    this.drawStack(state)
-  }
-
-  // the carried stack rides a backpack frame behind the miner
-  private drawStack(state: GameState): void {
-    const ctx = this.context
-    const player = state.player
+    // carried stack rides behind the miner
     const baseX = player.x - player.facing * 30
     for (let i = 0; i < state.stack.length; i++) {
       const sway = this.reducedMotion ? 0 : Math.sin(state.time * 8 + i * 0.6) * Math.min(6, i)
-      this.drawChip(baseX + sway * 0.4, player.y - 44 - i * 11, state.stack[i], 1)
+      this.drawChip(baseX + sway * 0.4, player.y - 44 - i * 11, state.stack[i])
     }
   }
 
-  private drawChip(x: number, y: number, ore: Ore, scale = 1): void {
+  private drawChip(x: number, y: number, ore: Ore): void {
     const ctx = this.context
     ctx.fillStyle = PALETTE.ore[ore]
-    roundRect(ctx, x - 10 * scale, y - 8 * scale, 20 * scale, 16 * scale, 5)
+    roundRect(ctx, x - 10, y - 8, 20, 16, 5)
     ctx.fillStyle = 'rgba(255,255,255,.3)'
-    roundRect(ctx, x - 6 * scale, y - 6 * scale, 8 * scale, 5 * scale, 2.5)
+    roundRect(ctx, x - 6, y - 6, 8, 5, 2.5)
+  }
+
+  private drawSparks(sparks: Spark[]): void {
+    const ctx = this.context
+    for (const spark of sparks) {
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, 1 - spark.age * 2)
+      ctx.fillStyle = '#FFF3C4'
+      ctx.beginPath(); ctx.arc(spark.x, spark.y, 3.5, 0, Math.PI * 2); ctx.fill()
+      ctx.restore()
+    }
   }
 
   private drawDepot(state: GameState): void {
     const ctx = this.context
-    this.shadow(DEPOT.x, DEPOT.y + 16, 96, 20)
-    // sell pad: a wooden pallet with a big coin sign
+    this.shadow(DEPOT.x, DEPOT.y + 18, 90, 18)
     ctx.fillStyle = PALETTE.wood
-    roundRect(ctx, DEPOT.x - 85, DEPOT.y - 24, 170, 44, 12)
+    roundRect(ctx, DEPOT.x - 80, DEPOT.y - 24, 160, 46, 12)
     ctx.fillStyle = '#B5804F'
-    roundRect(ctx, DEPOT.x - 85, DEPOT.y - 24, 170, 14, 7)
-    coin(ctx, DEPOT.x - 44, DEPOT.y - 44, 17)
-    coin(ctx, DEPOT.x + 44, DEPOT.y - 44, 17)
-    this.label('SELL', DEPOT.x, DEPOT.y - 2, 22, '#FFF')
-    this.ring(DEPOT.x, DEPOT.y + 12, 92, 34, state.stack.length > 0)
+    roundRect(ctx, DEPOT.x - 80, DEPOT.y - 24, 160, 15, 7)
+    coin(ctx, DEPOT.x - 44, DEPOT.y - 42, 15)
+    coin(ctx, DEPOT.x + 44, DEPOT.y - 42, 15)
+    this.ring(DEPOT.x, DEPOT.y + 14, 88, 30, state.stack.length > 0)
   }
 
   private drawShopPad(state: GameState, id: UpgradeId): void {
@@ -220,106 +233,147 @@ export class Renderer {
     const maxed = level >= UPGRADES[id].max
     const price = upgradePrice(id, level)
     const affordable = !maxed && state.save.coins >= price
-    this.shadow(spot.x, spot.y + 14, 62, 14)
+    this.shadow(spot.x, spot.y + 14, 56, 13)
     ctx.fillStyle = PALETTE.stoneLight
-    roundRect(ctx, spot.x - 52, spot.y - 14, 104, 30, 10)
-    const icon = { pick: '⛏', pack: '🎒', boots: '👢' }[id]
-    this.label(icon, spot.x - 30, spot.y - 26, 22, PALETTE.ink)
-    this.label(`LV${level}`, spot.x + 18, spot.y - 28, 15, PALETTE.ink)
-    if (maxed) {
-      this.label('MAX', spot.x, spot.y + 4, 16, PALETTE.ink)
-    } else {
-      coin(ctx, spot.x - 30, spot.y + 2, 9)
-      this.label(String(price), spot.x + 10, spot.y + 4, 17, affordable ? '#2E7D4F' : '#A04848')
-    }
-    this.ring(spot.x, spot.y + 10, 62, 24, affordable)
+    roundRect(ctx, spot.x - 48, spot.y - 14, 96, 30, 10)
+    this.ring(spot.x, spot.y + 8, 58, 22, affordable)
   }
 
   private drawGate(state: GameState, index: number): void {
     const ctx = this.context
     const gatePos = GATES[index]
-    if (index < state.save.gates) return // open gates vanish: the way is clear
-    const isNext = index === state.save.gates
-    const paid = isNext ? state.save.gatePaid : 0
-    const price = gatePos.price
-    // wall spanning the floor, with a progress door in the middle
-    ctx.fillStyle = '#8B8577'
-    roundRect(ctx, gatePos.x - 16, FLOOR.top - 60, 32, FLOOR.bottom - FLOOR.top + 90, 10)
+    if (index < state.save.gates) return
+    // a horizontal rock-wall floor sealing the stratum below
     ctx.fillStyle = '#6E6A5E'
-    for (let y = FLOOR.top - 40; y < FLOOR.bottom + 10; y += 46) {
-      roundRect(ctx, gatePos.x - 16, y, 32, 8, 4)
+    roundRect(ctx, 0, gatePos.y - 26, WORLD.width, 52, 0)
+    ctx.fillStyle = '#7E796B'
+    for (let x = 10; x < WORLD.width; x += 68) {
+      roundRect(ctx, x, gatePos.y - 18 + (x % 2) * 8, 52, 26, 10)
     }
-    if (!isNext) return
-    const fill = paid / price
-    ctx.fillStyle = 'rgba(61,50,48,.5)'
-    roundRect(ctx, gatePos.x - 46, gatePos.y - 96, 92, 26, 13)
-    ctx.fillStyle = PALETTE.coin
-    if (fill > 0) roundRect(ctx, gatePos.x - 42, gatePos.y - 92, 84 * fill, 18, 9)
-    coin(ctx, gatePos.x - 28, gatePos.y - 116, 9)
-    this.label(String(price - paid), gatePos.x + 8, gatePos.y - 112, 16, '#FFF')
-    this.ring(gatePos.x - 40, gatePos.y + 30, 60, 24, state.save.coins > 0)
   }
 
-  private drawFloat(x: number, y: number, text: string, age: number, kind: 'coin' | 'ore'): void {
-    const ctx = this.context
-    ctx.save()
-    ctx.globalAlpha = Math.max(0, 1 - age)
-    this.label(text, x, y, kind === 'coin' ? 19 : 16, kind === 'coin' ? '#B8860B' : PALETTE.ink)
-    ctx.restore()
+  // all interactive text, projected from world anchors but sized in css px
+  private worldLabels(state: GameState, view: Viewport, cameraY: number): void {
+    const project = (p: Point) => worldToClient(view, { x: p.x, y: p.y - cameraY })
+    const onScreen = (c: Point) => c.y > -60 && c.y < view.cssHeight + 60
+
+    const depot = project({ x: DEPOT.x, y: DEPOT.y - 4 })
+    if (onScreen(depot)) this.text('SELL', depot.x, depot.y, 16, '#FFF', true)
+
+    const icons: Record<UpgradeId, string> = { pick: '⛏', pack: '🎒', boots: '👢' }
+    for (const id of Object.keys(SHOP) as UpgradeId[]) {
+      const level = state.save.upgrades[id]
+      const maxed = level >= UPGRADES[id].max
+      const price = upgradePrice(id, level)
+      const affordable = !maxed && state.save.coins >= price
+      const spot = project({ x: SHOP[id].x, y: SHOP[id].y - 30 })
+      if (!onScreen(spot)) continue
+      this.text(`${icons[id]} LV${level}`, spot.x, spot.y, 13, PALETTE.ink, true)
+      this.text(maxed ? 'MAX' : `$${price}`, spot.x, spot.y + 30, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+    }
+
+    const next = GATES[state.save.gates]
+    if (next) {
+      const gate = project({ x: next.x, y: next.y - 56 })
+      if (onScreen(gate)) {
+        const remaining = next.price - state.save.gatePaid
+        const fill = state.save.gatePaid / next.price
+        const ctx = this.context
+        ctx.fillStyle = 'rgba(61,50,48,.85)'
+        cssRound(ctx, gate.x - 88, gate.y - 18, 176, 42, 12)
+        ctx.fillStyle = 'rgba(255,255,255,.25)'
+        cssRound(ctx, gate.x - 78, gate.y + 6, 156, 12, 6)
+        ctx.fillStyle = PALETTE.coin
+        if (fill > 0) cssRound(ctx, gate.x - 78, gate.y + 6, 156 * fill, 12, 6)
+        this.text(`DIG DEEPER  $${remaining}`, gate.x, gate.y - 1, 14, '#FFF', true)
+      }
+    }
   }
 
-  private drawHud(state: GameState, view: Viewport, cameraX: number): void {
+  private drawHud(state: GameState, view: Viewport): void {
     const ctx = this.context
-    const x = view.originX + cameraX + 22
-    const y = view.originY + 18
-    // coins, in digits: this game wears its numbers proudly
-    ctx.fillStyle = 'rgba(255,255,255,.92)'
-    roundRect(ctx, x, y, 150, 46, 23)
-    ctx.strokeStyle = PALETTE.ink; ctx.lineWidth = 3
-    ctx.beginPath(); ctx.roundRect(x, y, 150, 46, 23); ctx.stroke()
-    coin(ctx, x + 26, y + 23, 13)
-    this.label(String(state.save.coins), x + 92, y + 30, 22, PALETTE.ink)
-    // stack meter
-    ctx.fillStyle = 'rgba(255,255,255,.92)'
-    roundRect(ctx, x, y + 56, 150, 36, 18)
-    this.label(`${state.stack.length}/${capacity(state)}`, x + 75, y + 80, 17, state.stack.length >= capacity(state) ? '#A04848' : PALETTE.ink)
-    // zone marker
-    this.label(`ZONE ${Math.min(3, state.save.gates + 1)}/3`, x + 75, y + 116, 14, 'rgba(61,50,48,.55)')
+    const pad = 14
+    // coins pill
+    ctx.fillStyle = 'rgba(244,235,221,.94)'
+    cssRound(ctx, pad, pad, 132, 40, 20)
+    ctx.strokeStyle = PALETTE.ink; ctx.lineWidth = 2.5
+    ctx.beginPath(); ctx.roundRect(pad, pad, 132, 40, 20); ctx.stroke()
+    coinCss(ctx, pad + 22, pad + 20, 12)
+    this.text(String(state.save.coins), pad + 82, pad + 26, 18, PALETTE.ink, true)
+    // pack meter
+    const full = state.stack.length >= capacity(state)
+    ctx.fillStyle = 'rgba(244,235,221,.94)'
+    cssRound(ctx, pad, pad + 48, 132, 32, 16)
+    this.text(`⛏ ${state.stack.length}/${capacity(state)}${full ? ' FULL' : ''}`, pad + 66, pad + 69, 14, full ? '#A04848' : PALETTE.ink, true)
+
+    // contract card: the goal, top-center, always readable
+    const contract = state.save.contract
+    if (contract) {
+      const width = Math.min(250, view.cssWidth - 300)
+      const cx = view.cssWidth / 2 + 30
+      if (width > 150) {
+        ctx.fillStyle = 'rgba(61,50,48,.86)'
+        cssRound(ctx, cx - width / 2, pad, width, 62, 14)
+        this.text(`DELIVER ${contract.need} ${ORE_LABEL[contract.ore]}`, cx, pad + 20, 14, '#FFF', true)
+        ctx.fillStyle = 'rgba(255,255,255,.25)'
+        cssRound(ctx, cx - width / 2 + 12, pad + 30, width - 24, 10, 5)
+        ctx.fillStyle = PALETTE.ore[contract.ore]
+        const fill = Math.min(1, contract.done / contract.need)
+        if (fill > 0) cssRound(ctx, cx - width / 2 + 12, pad + 30, (width - 24) * fill, 10, 5)
+        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 13, '#FFD45E', true)
+      } else {
+        // very narrow: compact one-line card below the coins
+        ctx.fillStyle = 'rgba(61,50,48,.86)'
+        cssRound(ctx, pad, pad + 88, 210, 30, 12)
+        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, '#FFD45E', true)
+      }
+    }
+    // depth marker bottom-left
+    this.text(`ZONE ${Math.min(3, state.save.gates + 1)}/3`, pad + 40, view.cssHeight - 18, 13, 'rgba(244,235,221,.85)', true)
   }
 
-  private drawJoystick(joystick: Joystick, cameraX: number): void {
+  private drawJoystick(joystick: Joystick, view: Viewport, cameraY: number): void {
     const ctx = this.context
+    const origin = worldToClient(view, { x: joystick.origin.x, y: joystick.origin.y - cameraY })
+    const current = worldToClient(view, { x: joystick.current.x, y: joystick.current.y - cameraY })
     ctx.save()
     ctx.globalAlpha = 0.6
     ctx.fillStyle = '#FFF'
     ctx.strokeStyle = PALETTE.ink
-    ctx.lineWidth = 4
-    ctx.beginPath(); ctx.arc(joystick.origin.x, joystick.origin.y, 46, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    const dx = joystick.current.x - joystick.origin.x
-    const dy = joystick.current.y - joystick.origin.y
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.arc(origin.x, origin.y, 42, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    const dx = current.x - origin.x
+    const dy = current.y - origin.y
     const length = Math.max(1, Math.hypot(dx, dy))
-    const reach = Math.min(30, length)
+    const reach = Math.min(28, length)
     ctx.fillStyle = PALETTE.coin
-    ctx.beginPath(); ctx.arc(joystick.origin.x + dx / length * reach, joystick.origin.y + dy / length * reach, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    ctx.beginPath(); ctx.arc(origin.x + dx / length * reach, origin.y + dy / length * reach, 18, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
     ctx.restore()
   }
 
   private ring(x: number, y: number, rx: number, ry: number, active: boolean): void {
     const ctx = this.context
     ctx.save()
-    ctx.strokeStyle = active ? '#2E7D4F' : 'rgba(61,50,48,.35)'
+    ctx.strokeStyle = active ? '#1F6B42' : 'rgba(61,50,48,.4)'
     ctx.lineWidth = 4
     ctx.setLineDash([10, 10])
     ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.stroke()
     ctx.restore()
   }
 
-  private label(text: string, x: number, y: number, size: number, color: string): void {
+  /** css-px text with a floor of 13: nothing on screen is ever smaller */
+  private text(value: string, x: number, y: number, size: number, color: string, stroke = false): void {
     const ctx = this.context
-    ctx.fillStyle = color
-    ctx.font = `800 ${size}px ${FONT}`
+    const px = Math.max(13, size)
+    ctx.font = `800 ${px}px ${FONT}`
     ctx.textAlign = 'center'
-    ctx.fillText(text, x, y)
+    if (stroke) {
+      ctx.lineWidth = px / 5
+      ctx.strokeStyle = 'rgba(61,50,48,.35)'
+      ctx.strokeText(value, x, y)
+    }
+    ctx.fillStyle = color
+    ctx.fillText(value, x, y)
   }
 
   private shadow(x: number, y: number, rx: number, ry: number): void {
@@ -338,10 +392,20 @@ function coin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): v
   ctx.beginPath(); ctx.arc(x, y + 2, r, 0, Math.PI * 2); ctx.fill()
   ctx.fillStyle = PALETTE.coin
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+}
+
+function coinCss(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  coin(ctx, x, y, r)
   ctx.fillStyle = PALETTE.coinDeep
   ctx.font = `800 ${r * 1.3}px sans-serif`
   ctx.textAlign = 'center'
   ctx.fillText('$', x, y + r * 0.45)
+}
+
+function cssRound(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath()
+  ctx.roundRect(x, y, w, h, r)
+  ctx.fill()
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, skew = 0): void {

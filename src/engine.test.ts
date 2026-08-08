@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  capacity, createGame, DEPOT, GATES, ORES, pickDamage, runFor, SHOP,
-  upgradePrice, walkSpeed, ZONE_W, zoneOf,
+  capacity, createGame, DEPOT, GATES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
+  upgradePrice, walkSpeed, zoneOf,
 } from './engine'
 import { decodeSave, loadSave, storeSave } from './save'
 
@@ -95,13 +95,13 @@ describe('shop', () => {
 })
 
 describe('gates', () => {
-  it('a closed gate is a wall', () => {
+  it('a closed gate is a floor you cannot dig past', () => {
     const game = createGame()
-    game.player.x = ZONE_W - 120
-    game.player.y = 400
-    runFor(game, 5, { x: 1, y: 0 })
-    expect(game.player.x).toBeLessThanOrEqual(ZONE_W - 30)
-    expect(zoneOf(game.player.x)).toBe(0)
+    game.player.x = 270
+    game.player.y = SURFACE + ZONE_H - 160
+    runFor(game, 5, { x: 0, y: 1 })
+    expect(game.player.y).toBeLessThanOrEqual(SURFACE + ZONE_H - 40)
+    expect(zoneOf(game.player.y)).toBe(0)
   })
 
   it('pours coins over time, persists partial progress, opens at the price', () => {
@@ -118,13 +118,56 @@ describe('gates', () => {
     expect(game.save.gatePaid).toBe(0)
   })
 
-  it('an open gate lets the player walk through', () => {
+  it('an open gate lets the player dig into the next stratum', () => {
     const game = createGame()
     game.save.gates = 1
-    game.player.x = ZONE_W - 120
-    game.player.y = 400
-    runFor(game, 6, { x: 1, y: 0 })
-    expect(zoneOf(game.player.x)).toBe(1)
+    game.player.x = 270
+    game.player.y = SURFACE + ZONE_H - 160
+    runFor(game, 6, { x: 0, y: 1 })
+    expect(zoneOf(game.player.y)).toBe(1)
+  })
+})
+
+describe('contracts', () => {
+  it('a fresh game carries a zone-1 contract with a double-value reward', () => {
+    const game = createGame()
+    const contract = game.save.contract!
+    expect(['stone', 'coal']).toContain(contract.ore)
+    expect(contract.reward).toBe(contract.need * ORES[contract.ore].value * 2)
+    expect(contract.done).toBe(0)
+  })
+
+  it('is deterministic: same count and gates, same contract', () => {
+    expect(nextContract(3, 1)).toEqual(nextContract(3, 1))
+    expect(nextContract(4, 1)).not.toEqual(nextContract(3, 1))
+  })
+
+  it('deeper zones widen the ore pool', () => {
+    const ores = new Set<string>()
+    for (let i = 0; i < 12; i++) ores.add(nextContract(i, 2).ore)
+    expect([...ores].some(ore => ore === 'gold' || ore === 'crystal')).toBe(true)
+  })
+
+  it('progress counts only the listed ore at delivery, completion pays and rolls over', () => {
+    const game = createGame()
+    game.save.contract = { ore: 'stone', need: 2, done: 0, reward: 4 }
+    game.stack = ['coal', 'stone', 'stone']
+    Object.assign(game.player, DEPOT)
+    runFor(game, 2)
+    // 2 stone delivered completes it; coal sold but did not count
+    expect(game.save.contractsDone).toBe(1)
+    expect(game.save.coins).toBe(1 + 1 + 2 + 4) // stone x2 + coal + bonus
+    expect(game.save.contract!.done).toBe(0) // a fresh contract rolled in
+  })
+
+  it('feel events queue as pings and never grow unbounded', () => {
+    const game = createGame()
+    const rock = game.rocks[0]
+    game.player.x = rock.x - 40
+    game.player.y = rock.y
+    runFor(game, 30)
+    expect(game.pings.length).toBeLessThanOrEqual(24)
+    expect(game.pings).toContain('swing')
   })
 })
 

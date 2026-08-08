@@ -1,8 +1,8 @@
 import type { Point } from './engine'
 
-// the CAMERA sees one zone-sized window (960x640); the world is wider and the
-// renderer pans by cameraX after this uniform fit. viewport math stays pure.
-export const VIEW = { width: 960, height: 640 }
+// the CAMERA sees one portrait window (540x960); the world is DEEPER and the
+// renderer pans by cameraY after this uniform fit. viewport math stays pure.
+export const VIEW = { width: 540, height: 960 }
 
 // One shared camera for rendering and input (#13). A single uniform scale fits
 // the 960x640 world into whatever CSS viewport exists; the extra axis exposes
