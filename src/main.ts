@@ -48,6 +48,7 @@ function updateCamera(dt: number): void {
 
 const controls = new Controls(canvas, () => viewport, () => cameraY)
 const renderer = new Renderer(canvas)
+renderer.audioState = () => (muted ? 'muted' : audio?.state ?? 'none')
 let previous = performance.now()
 let saveClock = 0
 let paused = false
@@ -103,15 +104,24 @@ muteButton?.addEventListener('click', () => {
   localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
   syncMute()
 })
+// a tiny silent wav: playing ANY html5 audio promotes ios out of the ambient
+// category, which is what the ringer switch mutes. belt for the audioSession
+// suspenders, works on every ios version.
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+let unlocked = false
 function wakeAudio(): void {
   if (!audio) {
     audio = new AudioContext()
-    // ios mutes webaudio under the ringer switch unless the page declares
-    // itself playback audio (ios 17+); harmless everywhere else
+    // ios 17.4+: declare playback intent directly; harmless everywhere else
     const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
     if (session) session.type = 'playback'
   }
   if (audio.state === 'suspended') void audio.resume()
+  if (!unlocked) {
+    unlocked = true
+    const kick = new Audio(SILENT_WAV)
+    kick.play().catch(() => { unlocked = false }) // retry on the next gesture
+  }
 }
 addEventListener('pointerdown', wakeAudio)
 addEventListener('keydown', wakeAudio)

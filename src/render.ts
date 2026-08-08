@@ -35,6 +35,8 @@ const FONT = 'ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif'
 export class Renderer {
   readonly context: CanvasRenderingContext2D
   reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+  /** set by the shell; lets the hud show the truth about sound on screen */
+  audioState: () => string = () => 'none'
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d')
@@ -453,6 +455,13 @@ export class Renderer {
     }
     // depth marker bottom-left
     this.text(`ZONE ${Math.min(3, state.save.gates + 1)}/3`, pad + 40, view.cssHeight - 18, 13, 'rgba(244,235,221,.85)', true)
+    // sound status, only when something is off: muted or never woken
+    const soundState = this.audioState()
+    if (soundState !== 'running') {
+      ctx.fillStyle = 'rgba(61,50,48,.75)'
+      cssRound(ctx, view.cssWidth / 2 - 92, view.cssHeight - 44, 184, 30, 15)
+      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - 24, 13, '#FFF')
+    }
   }
 
   private drawJoystick(joystick: Joystick, view: Viewport, cameraY: number): void {
