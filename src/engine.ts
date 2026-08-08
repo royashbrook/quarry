@@ -39,18 +39,33 @@ export const UPGRADES: Record<UpgradeId, { base: number; growth: number; max: nu
 // rotating goal that gives a session direction and the hud its biggest number.
 export type Contract = { ore: Ore; need: number; done: number; reward: number }
 
+// one mine's own state: how deep it is opened, and who still works it
+export type MineState = { helpers: number; gates: number; gatePaid: number }
+
+export type SaveV2 = {
+  version: 2
+  coins: number
+  upgrades: Record<UpgradeId, number> // gear is global: it travels with you
+  lifetime: number
+  contract: Contract | null
+  contractsDone: number
+  monument: number // completed stages, global: the win condition
+  monumentPaid: number
+  mine: number // which mine you are standing in
+  mines: MineState[] // index 0 = the first mine; staffed old mines keep paying
+}
 export type SaveV1 = {
   version: 1
   coins: number
   upgrades: Record<UpgradeId, number>
-  gates: number // how many zone gates are OPEN (zone 0 is free)
-  gatePaid: number // coins already poured into the next gate
+  gates: number
+  gatePaid: number
   lifetime: number
   contract: Contract | null
   contractsDone: number
   helpers: number
-  monument: number // completed stages
-  monumentPaid: number // coins poured into the next stage
+  monument: number
+  monumentPaid: number
 }
 
 // sound/feel pings for the shell to drain each frame: the engine never touches
@@ -81,7 +96,8 @@ export type GameState = {
   // through never buys. after a buy the pad latches until you step away.
   buyCharge: { id: string; t: number } | null
   buyLatch: string | null
-  save: SaveV1
+  save: SaveV2
+  passiveBucket: number // fractional passive coins from staffed old mines
 }
 
 // world: portrait-first. one screen wide, three strata DEEP: the surface camp
@@ -136,19 +152,47 @@ const LAYOUT: [Ore, number, number][] = [
   ['crystal', 430, SURFACE + ZONE_H * 2 + 480], ['crystal', 280, SURFACE + ZONE_H * 2 + 640],
 ]
 
-export const defaultSave = (): SaveV1 => ({
-  version: 1,
+export const defaultSave = (): SaveV2 => ({
+  version: 2,
   coins: 0,
   upgrades: { pick: 0, pack: 0, boots: 0 },
-  gates: 0,
-  gatePaid: 0,
   lifetime: 0,
   contract: null,
   contractsDone: 0,
-  helpers: 0,
   monument: 0,
   monumentPaid: 0,
+  mine: 0,
+  mines: [{ helpers: 0, gates: 0, gatePaid: 0 }],
 })
+
+/** v1 saves carry one implicit mine; fold it into the v2 shape losslessly. */
+export function migrateV1(old: SaveV1): SaveV2 {
+  return {
+    version: 2,
+    coins: old.coins,
+    upgrades: old.upgrades,
+    lifetime: old.lifetime,
+    contract: old.contract,
+    contractsDone: old.contractsDone,
+    monument: old.monument,
+    monumentPaid: old.monumentPaid,
+    mine: 0,
+    mines: [{ helpers: old.helpers, gates: old.gates, gatePaid: old.gatePaid }],
+  }
+}
+
+/** the mine you are standing in; every gate/helper path reads through this */
+export const currentMine = (save: SaveV2): MineState => save.mines[save.mine]
+
+// each deeper mine multiplies ore values, and every price scales to match, so
+// the numbers grow but the decisions stay the same shape
+export const mineMultiplier = (mine: number): number => Math.pow(3, mine)
+
+// travel: the shaft at the bottom of zone 3. costs coins AND a pick tier, so
+// the frontier needs both wealth and equipment.
+export const TRAVEL = { x: 270, y: WORLD.height - 70 }
+export const travelPrice = (mine: number): number => 1500 * Math.pow(4, mine)
+export const travelPickNeeded = (mine: number): number => 3 + mine
 
 // contracts are generated DETERMINISTICALLY from how many came before, so the
 // sequence is testable and identical across reloads. deeper zones widen the ore
@@ -163,7 +207,7 @@ export function nextContract(contractsDone: number, gates: number): Contract {
   return { ore, need, done: 0, reward: need * ORES[ore].value * 2 }
 }
 
-export function createGame(save: SaveV1 = defaultSave()): GameState {
+export function createGame(save: SaveV2 = defaultSave()): GameState {
   const state: GameState = {
     time: 0,
     player: { x: 270, y: 430, facing: 1, moving: false, swing: 0, swinging: false },
@@ -183,9 +227,10 @@ export function createGame(save: SaveV1 = defaultSave()): GameState {
     buyCharge: null,
     buyLatch: null,
     save: structuredClone(save),
+    passiveBucket: 0,
   }
-  if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, state.save.gates)
-  for (let i = 0; i < state.save.helpers; i++) spawnHelper(state)
+  if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates)
+  for (let i = 0; i < currentMine(state.save).helpers; i++) spawnHelper(state)
   return state
 }
 
@@ -221,6 +266,8 @@ export function step(state: GameState, seconds: number, input: Input = { x: 0, y
   updateHelpers(state, dt)
   monument(state, dt)
   gate(state, dt)
+  travel(state, dt)
+  passiveIncome(state, dt)
   state.shake = Math.max(0, state.shake - dt)
   for (const spark of state.sparks) {
     spark.age += dt
@@ -250,7 +297,7 @@ function movePlayer(state: GameState, dt: number, input: Input): void {
   const speed = walkSpeed(state)
   // the world ends at the last OPEN gate: a closed gate is a floor you cannot
   // dig past until it is paid open
-  const maxY = SURFACE + ZONE_H * (state.save.gates + 1) - 40
+  const maxY = SURFACE + ZONE_H * (currentMine(state.save).gates + 1) - 40
   state.player.x = clamp(state.player.x + nx * speed * dt, 40, WORLD.width - 40)
   state.player.y = clamp(state.player.y + ny * speed * 0.85 * dt, 150, maxY)
   if (Math.abs(nx) > 0.1) state.player.facing = Math.sign(nx)
@@ -307,7 +354,7 @@ function sell(state: GameState, dt: number): void {
   if (state.sellTimer < 0.09) return
   state.sellTimer = 0
   const ore = state.stack.pop() as Ore
-  const value = ORES[ore].value
+  const value = ORES[ore].value * mineMultiplier(state.save.mine)
   state.save.coins += value
   state.save.lifetime += value
   state.pings.push('coin')
@@ -321,7 +368,7 @@ function sell(state: GameState, dt: number): void {
       state.save.lifetime += contract.reward
       state.save.contractsDone += 1
       state.floats.push({ x: DEPOT.x, y: DEPOT.y - 96, text: `BONUS +${contract.reward}!`, age: 0, kind: 'coin' })
-      state.save.contract = nextContract(state.save.contractsDone, state.save.gates)
+      state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates)
       state.shake = 0.2
       state.pings.push('contract')
     }
@@ -348,7 +395,7 @@ function updateTransit(state: GameState, dt: number): void {
   for (const item of state.transit) {
     item.remaining -= dt
     if (item.remaining <= 0) {
-      const value = Math.max(1, Math.floor(ORES[item.ore].value * CHUTE_RATE))
+      const value = Math.max(1, Math.floor(ORES[item.ore].value * CHUTE_RATE * mineMultiplier(state.save.mine)))
       state.save.coins += value
       state.save.lifetime += value
       state.pings.push('coin')
@@ -371,12 +418,13 @@ function buyablePads(state: GameState): { id: string; at: Point; price: number; 
       buy: () => { state.save.upgrades[id] = level + 1 },
     })
   }
-  if (state.save.helpers < HELPER_PRICES.length) {
+  const mine = currentMine(state.save)
+  if (mine.helpers < HELPER_PRICES.length) {
     pads.push({
       id: 'helper',
       at: HELPER_PAD,
-      price: HELPER_PRICES[state.save.helpers],
-      buy: () => { state.save.helpers += 1; spawnHelper(state) },
+      price: HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine),
+      buy: () => { mine.helpers += 1; spawnHelper(state) },
     })
   }
   return pads
@@ -405,21 +453,71 @@ function chargeBuys(state: GameState, dt: number): void {
 // gates swallow coins over time while you stand at them: progress persists in
 // the save, so a half-paid gate stays half-paid across reloads
 function gate(state: GameState, dt: number): void {
-  const next = GATES[state.save.gates]
+  const mine = currentMine(state.save)
+  const next = GATES[mine.gates]
   if (!next || state.save.coins === 0 || distance(next, state.player) > 90) { state.gateTimer = 0; return }
+  const price = next.price * mineMultiplier(state.save.mine)
   state.gateTimer += dt
   if (state.gateTimer < 0.05) return
   state.gateTimer = 0
-  const pour = Math.min(3, state.save.coins, next.price - state.save.gatePaid)
+  const pour = Math.min(3 * mineMultiplier(state.save.mine), state.save.coins, price - mine.gatePaid)
   state.save.coins -= pour
-  state.save.gatePaid += pour
-  if (state.save.gatePaid >= next.price) {
-    state.save.gates += 1
-    state.save.gatePaid = 0
+  mine.gatePaid += pour
+  if (mine.gatePaid >= price) {
+    mine.gates += 1
+    mine.gatePaid = 0
     state.shake = 0.4 // the wall coming down is the biggest beat in the game
     state.pings.push('gate')
     state.floats.push({ x: next.x, y: next.y - 80, text: 'OPEN!', age: 0, kind: 'coin' })
   }
+}
+
+// the shaft at the very bottom: pour coins with the pick tier in hand, and the
+// next mine opens. your helpers stay behind and keep the old mine paying.
+function travel(state: GameState, dt: number): void {
+  const mine = currentMine(state.save)
+  if (mine.gates < GATES.length) return // the shaft sits below the last stratum
+  if (pickDamage(state) - 1 < travelPickNeeded(state.save.mine)) return
+  if (state.save.coins === 0 || distance(TRAVEL, state.player) > 90) return
+  const price = travelPrice(state.save.mine)
+  state.gateTimer += dt
+  if (state.gateTimer < 0.05) return
+  state.gateTimer = 0
+  const pour = Math.min(5 * mineMultiplier(state.save.mine), state.save.coins, price - mine.gatePaid)
+  state.save.coins -= pour
+  mine.gatePaid += pour
+  if (mine.gatePaid >= price) {
+    mine.gatePaid = 0
+    state.save.mine += 1
+    state.save.mines.push({ helpers: 0, gates: 0, gatePaid: 0 })
+    state.helpers = [] // the crew stays home; the new mine starts empty
+    state.rocks.forEach(rock => { rock.hp = ORES[rock.ore].hp; rock.respawn = 0 })
+    state.stack = []
+    state.transit = []
+    state.player.x = 270
+    state.player.y = 430
+    state.shake = 0.5
+    state.pings.push('gate')
+    state.floats.push({ x: 270, y: 500, text: `MINE ${state.save.mine + 1}!`, age: 0, kind: 'coin' })
+  }
+}
+
+// staffed old mines trickle passive income: each helper left behind earns a
+// fraction of its mine's coal-rate. fractions bank in a bucket so nothing is
+// lost to rounding; payouts float at the depot so the income is visible.
+function passiveIncome(state: GameState, dt: number): void {
+  let rate = 0
+  for (let m = 0; m < state.save.mine; m++) {
+    rate += state.save.mines[m].helpers * mineMultiplier(m) * 0.4
+  }
+  if (rate === 0) return
+  state.passiveBucket += rate * dt
+  if (state.passiveBucket < 5) return
+  const pay = Math.floor(state.passiveBucket)
+  state.passiveBucket -= pay
+  state.save.coins += pay
+  state.save.lifetime += pay
+  state.floats.push({ x: DEPOT.x + 30, y: DEPOT.y - 70, text: `+${pay} MINES`, age: 0, kind: 'ore' })
 }
 
 function spawnHelper(state: GameState): void {
@@ -431,7 +529,7 @@ function spawnHelper(state: GameState): void {
 // time into a small stack, then walk it to the depot and sell at HALF value.
 // they never touch contracts: the listed ore stays the player's business.
 function updateHelpers(state: GameState, dt: number): void {
-  const maxY = SURFACE + ZONE_H * (state.save.gates + 1) - 40
+  const maxY = SURFACE + ZONE_H * (currentMine(state.save).gates + 1) - 40
   for (const helper of state.helpers) {
     if (helper.stack.length >= HELPER_CAPACITY) {
       walkToward(helper, DEPOT, 120 * dt)
@@ -440,7 +538,7 @@ function updateHelpers(state: GameState, dt: number): void {
         if (helper.sellTimer >= 0.2) {
           helper.sellTimer = 0
           const ore = helper.stack.pop() as Ore
-          const value = Math.max(1, Math.floor(ORES[ore].value / 2))
+          const value = Math.max(1, Math.floor(ORES[ore].value * mineMultiplier(state.save.mine) / 2))
           state.save.coins += value
           state.save.lifetime += value
           state.floats.push({ x: DEPOT.x, y: DEPOT.y - 40, text: `+${value}`, age: 0, kind: 'ore' })

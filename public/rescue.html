@@ -26,7 +26,7 @@
       const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0))
       const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
       const save=JSON.parse(await new Response(stream).text())
-      if(save.version!==1||!Number.isFinite(save.coins)||typeof save.upgrades!=='object')throw Error('bad save')
+      if((save.version!==1&&save.version!==2)||!Number.isFinite(save.coins)||typeof save.upgrades!=='object')throw Error('bad save')
       return save
     }
     if(!location.hash.startsWith('#'+prefix)){button.disabled=true;button.classList.add('bad')}
