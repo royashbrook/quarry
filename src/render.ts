@@ -2,7 +2,7 @@
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
 // a 13 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
-import { BUY_CHARGE_SECONDS, capacity, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, ORES, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
+import { BUY_CHARGE_SECONDS, capacity, CHUTES, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, ORES, RAIL_X, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
@@ -55,6 +55,7 @@ export class Renderer {
     ctx.setTransform(k, 0, 0, k, (-view.originX + shakeX) * k, (-view.originY - cameraY + shakeY) * k)
 
     this.drawGround(state, view, cameraY)
+    this.drawRail(state, view, cameraY)
 
     const things: { anchor: Point; draw: () => void }[] = [
       { anchor: MONUMENT, draw: () => this.drawMonument(state) },
@@ -126,6 +127,41 @@ export class Renderer {
         const x = 90 + ((y * 104729) % 380)
         ctx.beginPath(); ctx.arc(x, y + 60, 4, 0, Math.PI * 2); ctx.fill()
       }
+    }
+  }
+
+  // the rail runs the full dig on the right edge; chutes feed it, and the cart
+  // rides the OLDEST transit chunk's progress so dumps visibly travel home.
+  private drawRail(state: GameState, view: Viewport, cameraY: number): void {
+    const ctx = this.context
+    const top = view.originY + cameraY
+    const bottom = top + view.viewHeight
+    ctx.strokeStyle = 'rgba(61,50,48,.35)'
+    ctx.lineWidth = 5
+    ctx.beginPath(); ctx.moveTo(RAIL_X, Math.max(top, DEPOT.y)); ctx.lineTo(RAIL_X, Math.min(bottom, WORLD.height - 60)); ctx.stroke()
+    ctx.lineWidth = 3
+    for (let y = Math.max(Math.floor(top / 44) * 44, 264); y < bottom; y += 44) {
+      ctx.beginPath(); ctx.moveTo(RAIL_X - 10, y); ctx.lineTo(RAIL_X + 10, y); ctx.stroke()
+    }
+    for (const spot of CHUTES) {
+      this.shadow(spot.x, spot.y + 12, 52, 12)
+      ctx.fillStyle = PALETTE.wood
+      roundRect(ctx, spot.x - 44, spot.y - 20, 88, 34, 8)
+      ctx.fillStyle = '#7A5232'
+      roundRect(ctx, spot.x - 36, spot.y - 14, 72, 20, 6)
+      this.ring(spot.x, spot.y + 10, 56, 20, state.stack.length > 0)
+    }
+    const oldest = state.transit[0]
+    if (oldest) {
+      const progress = 1 - oldest.remaining / oldest.total
+      const cartY = oldest.fromY + (DEPOT.y - oldest.fromY) * progress
+      ctx.fillStyle = '#6B4A2F'
+      roundRect(ctx, RAIL_X - 16, cartY - 12, 32, 20, 6)
+      ctx.fillStyle = PALETTE.ore[oldest.ore]
+      roundRect(ctx, RAIL_X - 10, cartY - 18, 20, 10, 4)
+      ctx.fillStyle = PALETTE.ink
+      lump(ctx, RAIL_X - 8, cartY + 10, 5)
+      lump(ctx, RAIL_X + 8, cartY + 10, 5)
     }
   }
 
@@ -386,6 +422,11 @@ export class Renderer {
       const spot = project({ x: SHOP[id].x, y: SHOP[id].y + 2 })
       if (!onScreen(spot)) continue
       this.text(maxed ? `${icons[id]}${level} MAX` : `${icons[id]}${level} · ${price}`, spot.x, spot.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+    }
+
+    for (const spot of CHUTES) {
+      const at = project({ x: spot.x, y: spot.y - 34 })
+      if (onScreen(at)) this.text('CHUTE ↑', at.x, at.y, 13, 'rgba(244,235,221,.9)', true)
     }
 
     const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y + 2 })

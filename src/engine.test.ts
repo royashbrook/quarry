@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  capacity, createGame, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
+  capacity, CHUTE_RATE, CHUTES, createGame, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
   upgradePrice, walkSpeed, zoneOf,
 } from './engine'
 import { decodeSave, loadSave, storeSave } from './save'
@@ -284,5 +284,43 @@ describe('save', () => {
     expect(code.startsWith('qy1.')).toBe(true)
     expect(await decodeSave(code)).toEqual(game.save)
     await expect(decodeSave('nope')).rejects.toThrow()
+  })
+})
+
+describe('ore chute (#7)', () => {
+  it('drains the stack into transit and pays discounted at the depot after the delay', () => {
+    const game = createGame()
+    game.stack = ['gold', 'gold', 'gold', 'gold']
+    game.rocks.forEach(rock => { rock.respawn = 99 }) // no mining during the dump
+    Object.assign(game.player, CHUTES[0])
+    runFor(game, 1)
+    expect(game.stack.length).toBe(0)
+    expect(game.transit.length).toBe(4)
+    expect(game.save.coins).toBe(0) // nothing pays until the cart arrives
+    runFor(game, 8) // travel time for zone 1 is ~4.5s
+    expect(game.transit.length).toBe(0)
+    expect(game.save.coins).toBe(4 * Math.floor(8 * CHUTE_RATE)) // gold 8 -> 6 each
+  })
+
+  it('never credits the contract: hand delivery stays the premium route', () => {
+    const game = createGame()
+    game.save.contract = { ore: 'stone', need: 3, done: 0, reward: 6 }
+    game.stack = ['stone', 'stone', 'stone']
+    Object.assign(game.player, CHUTES[0])
+    runFor(game, 10)
+    expect(game.save.coins).toBeGreaterThan(0)
+    expect(game.save.contract!.done).toBe(0)
+  })
+
+  it('deeper chutes take longer to pay', () => {
+    const shallow = createGame()
+    shallow.stack = ['stone']
+    Object.assign(shallow.player, CHUTES[0])
+    runFor(shallow, 0.3)
+    const deep = createGame()
+    deep.stack = ['stone']
+    Object.assign(deep.player, CHUTES[2])
+    runFor(deep, 0.3)
+    expect(deep.transit[0].total).toBeGreaterThan(shallow.transit[0].total)
   })
 })
