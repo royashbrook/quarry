@@ -61,16 +61,44 @@ describe('selling', () => {
   })
 })
 
-describe('shop', () => {
-  it('buys the pad you stand on exactly once per stand', () => {
+describe('shop (deliberate buys, #4)', () => {
+  it('standing still charges for ~0.7s and buys exactly once', () => {
     const game = createGame()
     game.save.coins = upgradePrice('pick', 0)
     Object.assign(game.player, SHOP.pick)
+    runFor(game, 0.5) // not charged yet
+    expect(game.save.upgrades.pick).toBe(0)
     runFor(game, 0.5)
     expect(game.save.upgrades.pick).toBe(1)
     expect(game.save.coins).toBe(0)
-    runFor(game, 3) // still standing: cannot chain-buy without coins anyway
+  })
+
+  it('WALKING THROUGH a pad never buys, no matter how affordable', () => {
+    const game = createGame()
+    game.save.coins = 99999
+    // march straight down the shop column, crossing every pad
+    game.player.x = SHOP.pick.x
+    game.player.y = SHOP.pick.y - 80
+    runFor(game, 3, { x: 0, y: 1 })
+    expect(game.save.upgrades).toEqual({ pick: 0, pack: 0, boots: 0 })
+    expect(game.save.helpers).toBe(0)
+    expect(game.save.coins).toBe(99999)
+  })
+
+  it('a held stand cannot chain-buy: the pad latches until you step away', () => {
+    const game = createGame()
+    game.save.coins = 99999
+    Object.assign(game.player, SHOP.pick)
+    runFor(game, 2) // one charge completes, then the latch holds
     expect(game.save.upgrades.pick).toBe(1)
+    runFor(game, 5) // keep standing: nothing more
+    expect(game.save.upgrades.pick).toBe(1)
+    // step away, come back: charges again for the next level
+    game.player.y += 200
+    runFor(game, 0.5)
+    Object.assign(game.player, SHOP.pick)
+    runFor(game, 1)
+    expect(game.save.upgrades.pick).toBe(2)
   })
 
   it('upgrades change the derived numbers', () => {
@@ -88,7 +116,7 @@ describe('shop', () => {
     game.save.upgrades.pick = 8 // max
     game.save.coins = 99999
     Object.assign(game.player, SHOP.pick)
-    runFor(game, 1)
+    runFor(game, 3)
     expect(game.save.upgrades.pick).toBe(8)
     expect(game.save.coins).toBe(99999)
   })
@@ -172,18 +200,19 @@ describe('contracts', () => {
 })
 
 describe('helpers', () => {
-  it('hires at the pad, capped at three, price ladder honored', () => {
+  it('hires with the same charge-and-latch as any pad, capped at three', () => {
     const game = createGame()
     game.save.coins = HELPER_PRICES[0]
     Object.assign(game.player, HELPER_PAD)
-    runFor(game, 0.5)
+    runFor(game, 1)
     expect(game.save.helpers).toBe(1)
     expect(game.helpers.length).toBe(1)
     expect(game.save.coins).toBe(0)
     game.save.coins = 99999
-    runFor(game, 1.2) // cooldown passed: buys #2
-    runFor(game, 1.2) // buys #3
-    runFor(game, 3)
+    const away = () => { game.player.y += 200; runFor(game, 0.3); Object.assign(game.player, HELPER_PAD) }
+    away(); runFor(game, 1) // hire #2
+    away(); runFor(game, 1) // hire #3
+    away(); runFor(game, 2) // capped: nothing
     expect(game.save.helpers).toBe(3)
     expect(game.save.coins).toBe(99999 - HELPER_PRICES[1] - HELPER_PRICES[2])
   })

@@ -2,7 +2,7 @@
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
 // a 13 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
-import { capacity, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, ORES, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
+import { BUY_CHARGE_SECONDS, capacity, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, ORES, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
@@ -253,6 +253,23 @@ export class Renderer {
     ctx.fillStyle = PALETTE.stoneLight
     roundRect(ctx, spot.x - 48, spot.y - 14, 96, 30, 10)
     this.ring(spot.x, spot.y + 8, 58, 22, affordable)
+    this.chargeArc(state, id, spot)
+  }
+
+  // the deliberate-buy feedback: a golden arc sweeps the pad while you stand
+  // still on it, full circle = bought. no arc ever appears in passing.
+  private chargeArc(state: GameState, id: string, spot: Point): void {
+    if (state.buyCharge?.id !== id) return
+    const ctx = this.context
+    const fraction = Math.min(1, state.buyCharge.t / BUY_CHARGE_SECONDS)
+    ctx.save()
+    ctx.strokeStyle = PALETTE.coin
+    ctx.lineWidth = 7
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.ellipse(spot.x, spot.y + 8, 58, 22, 0, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
   }
 
   // the monument grows on the skyline as stages complete: pedestal, base,
@@ -300,7 +317,8 @@ export class Renderer {
       }
     }
     const next = MONUMENT_STAGES[stage]
-    if (next) this.ring(x, y + 8, 72, 22, state.save.coins > 0)
+    const nearby = Math.hypot(state.player.x - x, state.player.y - y) < 150
+    if (next && nearby) this.ring(x, y + 8, 72, 22, state.save.coins > 0)
   }
 
   private drawHelperPad(state: GameState): void {
@@ -311,6 +329,7 @@ export class Renderer {
     roundRect(ctx, spot.x - 48, spot.y - 14, 96, 30, 10)
     const affordable = state.save.helpers < HELPER_PRICES.length && state.save.coins >= HELPER_PRICES[state.save.helpers]
     this.ring(spot.x, spot.y + 8, 58, 22, affordable)
+    this.chargeArc(state, 'helper', spot)
   }
 
   // a hired hand: smaller, grey hat, same bones as the miner
@@ -364,25 +383,25 @@ export class Renderer {
       const maxed = level >= UPGRADES[id].max
       const price = upgradePrice(id, level)
       const affordable = !maxed && state.save.coins >= price
-      const spot = project({ x: SHOP[id].x, y: SHOP[id].y - 30 })
+      const spot = project({ x: SHOP[id].x, y: SHOP[id].y + 2 })
       if (!onScreen(spot)) continue
-      this.text(`${icons[id]} LV${level}`, spot.x, spot.y, 13, PALETTE.ink, true)
-      this.text(maxed ? 'MAX' : `$${price}`, spot.x, spot.y + 30, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `${icons[id]}${level} MAX` : `${icons[id]}${level} · ${price}`, spot.x, spot.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
     }
 
-    const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y - 30 })
+    const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y + 2 })
     if (onScreen(hire)) {
       const maxed = state.save.helpers >= HELPER_PRICES.length
       const price = HELPER_PRICES[state.save.helpers]
       const affordable = !maxed && state.save.coins >= price
-      this.text(`👷 ×${state.save.helpers}`, hire.x, hire.y, 13, PALETTE.ink, true)
-      this.text(maxed ? 'MAX' : `HIRE $${price}`, hire.x, hire.y + 30, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `👷${state.save.helpers} MAX` : `👷${state.save.helpers} · ${price}`, hire.x, hire.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
     }
 
     const stagePrice = MONUMENT_STAGES[state.save.monument]
-    if (stagePrice) {
+    const monumentNear = Math.hypot(state.player.x - MONUMENT.x, state.player.y - MONUMENT.y) < 150
+    if (stagePrice && monumentNear) {
       const spot = project({ x: MONUMENT.x, y: MONUMENT.y - 132 })
-      spot.x = Math.max(104, Math.min(view.cssWidth - 104, spot.x)) // never clip off an edge
+      spot.x = Math.max(104, Math.min(view.cssWidth - 104, spot.x)) // never clip an edge
+      spot.y = Math.max(150, spot.y) // never sit on the hud stack
       if (onScreen(spot)) {
         const remaining = stagePrice - state.save.monumentPaid
         const fill = state.save.monumentPaid / stagePrice
