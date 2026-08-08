@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  capacity, createGame, DEPOT, GATES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
+  capacity, createGame, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
   upgradePrice, walkSpeed, zoneOf,
 } from './engine'
 import { decodeSave, loadSave, storeSave } from './save'
@@ -168,6 +168,68 @@ describe('contracts', () => {
     runFor(game, 30)
     expect(game.pings.length).toBeLessThanOrEqual(24)
     expect(game.pings).toContain('swing')
+  })
+})
+
+describe('helpers', () => {
+  it('hires at the pad, capped at three, price ladder honored', () => {
+    const game = createGame()
+    game.save.coins = HELPER_PRICES[0]
+    Object.assign(game.player, HELPER_PAD)
+    runFor(game, 0.5)
+    expect(game.save.helpers).toBe(1)
+    expect(game.helpers.length).toBe(1)
+    expect(game.save.coins).toBe(0)
+    game.save.coins = 99999
+    runFor(game, 1.2) // cooldown passed: buys #2
+    runFor(game, 1.2) // buys #3
+    runFor(game, 3)
+    expect(game.save.helpers).toBe(3)
+    expect(game.save.coins).toBe(99999 - HELPER_PRICES[1] - HELPER_PRICES[2])
+  })
+
+  it('a helper mines and sells at half value without touching the contract', () => {
+    const game = createGame()
+    game.save.contract = { ore: 'stone', need: 5, done: 0, reward: 10 }
+    game.save.helpers = 1
+    game.helpers.push({ x: DEPOT.x, y: DEPOT.y, stack: [], rockId: null, mineTimer: 0, sellTimer: 0 })
+    // park the player far away so only the helper acts
+    game.player.x = 500; game.player.y = 900
+    runFor(game, 60)
+    expect(game.save.coins).toBeGreaterThan(0)
+    expect(game.save.contract.done).toBe(0)
+  })
+
+  it('reload respawns the hired helpers', () => {
+    const game = createGame()
+    game.save.helpers = 2
+    const reborn = createGame(game.save)
+    expect(reborn.helpers.length).toBe(2)
+  })
+})
+
+describe('monument', () => {
+  it('pours coins by stage, grows, and persists partial progress', () => {
+    const game = createGame()
+    game.save.coins = 150
+    Object.assign(game.player, MONUMENT)
+    runFor(game, 3)
+    expect(game.save.coins).toBe(0)
+    expect(game.save.monumentPaid).toBe(150)
+    expect(game.save.monument).toBe(0)
+    game.save.coins = MONUMENT_STAGES[0] - 150
+    runFor(game, 5)
+    expect(game.save.monument).toBe(1)
+    expect(game.save.monumentPaid).toBe(0)
+  })
+
+  it('stops forever after the last stage', () => {
+    const game = createGame()
+    game.save.monument = MONUMENT_STAGES.length
+    game.save.coins = 500
+    Object.assign(game.player, MONUMENT)
+    runFor(game, 2)
+    expect(game.save.coins).toBe(500)
   })
 })
 

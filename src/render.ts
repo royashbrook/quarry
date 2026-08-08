@@ -2,7 +2,7 @@
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
 // a 13 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
-import { capacity, DEPOT, GATES, ORES, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
+import { capacity, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, ORES, SHOP, SURFACE, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
@@ -55,7 +55,10 @@ export class Renderer {
     this.drawGround(state, view, cameraY)
 
     const things: { anchor: Point; draw: () => void }[] = [
+      { anchor: MONUMENT, draw: () => this.drawMonument(state) },
       { anchor: DEPOT, draw: () => this.drawDepot(state) },
+      { anchor: HELPER_PAD, draw: () => this.drawHelperPad(state) },
+      ...state.helpers.map(helper => ({ anchor: helper, draw: () => this.drawHelper(state, helper) })),
       ...(Object.keys(SHOP) as UpgradeId[]).map(id => ({ anchor: SHOP[id], draw: () => this.drawShopPad(state, id) })),
       ...state.rocks.filter(rock => rock.respawn === 0).map(rock => ({ anchor: rock, draw: () => this.drawRock(rock) })),
       { anchor: state.player, draw: () => this.drawMiner(state) },
@@ -143,6 +146,17 @@ export class Renderer {
       ctx.fillStyle = PALETTE.stoneLight
       lump(ctx, size * 0.3, -size * 0.62, size * 0.16)
       lump(ctx, -size * 0.42, -size * 0.18, size * 0.14)
+    }
+    // damage reads as cracks: one line per lost third of hp
+    const lost = 1 - healthy
+    if (lost > 0.15) {
+      ctx.strokeStyle = 'rgba(30,24,28,.5)'
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(-size * .3, -size * .8); ctx.lineTo(-size * .1, -size * .4); ctx.lineTo(-size * .25, -size * .1); ctx.stroke()
+    }
+    if (lost > 0.55) {
+      ctx.strokeStyle = 'rgba(30,24,28,.5)'
+      ctx.beginPath(); ctx.moveTo(size * .35, -size * .7); ctx.lineTo(size * .15, -size * .35); ctx.lineTo(size * .38, -size * .05); ctx.stroke()
     }
     ctx.restore()
   }
@@ -239,6 +253,88 @@ export class Renderer {
     this.ring(spot.x, spot.y + 8, 58, 22, affordable)
   }
 
+  // the monument grows on the skyline as stages complete: pedestal, base,
+  // torso, raised pickaxe, gold trim. stage 0 is a dashed promise.
+  private drawMonument(state: GameState): void {
+    const ctx = this.context
+    const stage = state.save.monument
+    const x = MONUMENT.x
+    const y = MONUMENT.y
+    this.shadow(x, y + 6, 70, 12)
+    if (stage === 0) {
+      ctx.save()
+      ctx.strokeStyle = 'rgba(61,50,48,.45)'
+      ctx.lineWidth = 3
+      ctx.setLineDash([8, 8])
+      ctx.strokeRect(x - 45, y - 120, 90, 118)
+      ctx.restore()
+    }
+    if (stage >= 1) { ctx.fillStyle = PALETTE.stoneLight; roundRect(ctx, x - 55, y - 18, 110, 20, 6) }
+    if (stage >= 2) { ctx.fillStyle = '#B9B4AC'; roundRect(ctx, x - 38, y - 52, 76, 36, 8) }
+    if (stage >= 3) {
+      ctx.fillStyle = '#A9A49C'
+      roundRect(ctx, x - 22, y - 100, 44, 50, 12)
+      ctx.beginPath(); ctx.arc(x, y - 110, 16, 0, Math.PI * 2); ctx.fill()
+    }
+    if (stage >= 4) {
+      ctx.save()
+      ctx.translate(x + 20, y - 96)
+      ctx.rotate(-0.6)
+      ctx.fillStyle = PALETTE.wood
+      roundRect(ctx, -3, -34, 6, 38, 3)
+      ctx.fillStyle = '#8D9096'
+      ctx.beginPath(); ctx.moveTo(-14, -34); ctx.quadraticCurveTo(0, -44, 14, -34); ctx.quadraticCurveTo(0, -38, -14, -34); ctx.fill()
+      ctx.restore()
+    }
+    if (stage >= MONUMENT_STAGES.length) {
+      ctx.fillStyle = PALETTE.coin
+      ctx.beginPath(); ctx.arc(x, y - 110, 18, 0, Math.PI * 2); ctx.fill()
+      if (!this.reducedMotion) {
+        ctx.fillStyle = 'rgba(255,212,94,.8)'
+        for (let i = 0; i < 4; i++) {
+          const a = state.time * 2 + i * 1.57
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * 58, y - 80 + Math.sin(a) * 34, 4, 0, Math.PI * 2); ctx.fill()
+        }
+      }
+    }
+    const next = MONUMENT_STAGES[stage]
+    if (next) this.ring(x, y + 8, 72, 22, state.save.coins > 0)
+  }
+
+  private drawHelperPad(state: GameState): void {
+    const ctx = this.context
+    const spot = HELPER_PAD
+    this.shadow(spot.x, spot.y + 14, 56, 13)
+    ctx.fillStyle = PALETTE.stoneLight
+    roundRect(ctx, spot.x - 48, spot.y - 14, 96, 30, 10)
+    const affordable = state.save.helpers < HELPER_PRICES.length && state.save.coins >= HELPER_PRICES[state.save.helpers]
+    this.ring(spot.x, spot.y + 8, 58, 22, affordable)
+  }
+
+  // a hired hand: smaller, grey hat, same bones as the miner
+  private drawHelper(state: GameState, helper: { x: number; y: number; stack: Ore[] }): void {
+    const ctx = this.context
+    this.shadow(helper.x, helper.y + 3, 26, 8)
+    ctx.save()
+    ctx.translate(helper.x, helper.y)
+    ctx.fillStyle = '#5A6B8C'
+    roundRect(ctx, -12, -22, 10, 22, 5)
+    roundRect(ctx, 2, -22, 10, 22, 5)
+    ctx.fillStyle = '#7B8A6E'
+    roundRect(ctx, -15, -48, 30, 30, 10)
+    ctx.fillStyle = '#F2C9A2'
+    ctx.beginPath(); ctx.arc(0, -60, 15, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#B8B2A6'
+    ctx.beginPath(); ctx.arc(0, -66, 14, Math.PI, 0); ctx.fill()
+    ctx.fillStyle = PALETTE.ink
+    ctx.beginPath(); ctx.arc(4, -59, 2.2, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(10, -59, 2.2, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+    for (let i = 0; i < helper.stack.length; i++) {
+      this.drawChip(helper.x - 18, helper.y - 28 - i * 9, helper.stack[i])
+    }
+  }
+
   private drawGate(state: GameState, index: number): void {
     const ctx = this.context
     const gatePos = GATES[index]
@@ -270,6 +366,33 @@ export class Renderer {
       if (!onScreen(spot)) continue
       this.text(`${icons[id]} LV${level}`, spot.x, spot.y, 13, PALETTE.ink, true)
       this.text(maxed ? 'MAX' : `$${price}`, spot.x, spot.y + 30, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+    }
+
+    const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y - 30 })
+    if (onScreen(hire)) {
+      const maxed = state.save.helpers >= HELPER_PRICES.length
+      const price = HELPER_PRICES[state.save.helpers]
+      const affordable = !maxed && state.save.coins >= price
+      this.text(`👷 ×${state.save.helpers}`, hire.x, hire.y, 13, PALETTE.ink, true)
+      this.text(maxed ? 'MAX' : `HIRE $${price}`, hire.x, hire.y + 30, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+    }
+
+    const stagePrice = MONUMENT_STAGES[state.save.monument]
+    if (stagePrice) {
+      const spot = project({ x: MONUMENT.x, y: MONUMENT.y - 132 })
+      spot.x = Math.max(104, Math.min(view.cssWidth - 104, spot.x)) // never clip off an edge
+      if (onScreen(spot)) {
+        const remaining = stagePrice - state.save.monumentPaid
+        const fill = state.save.monumentPaid / stagePrice
+        const ctx = this.context
+        ctx.fillStyle = 'rgba(61,50,48,.85)'
+        cssRound(ctx, spot.x - 92, spot.y - 16, 184, 40, 12)
+        ctx.fillStyle = 'rgba(255,255,255,.25)'
+        cssRound(ctx, spot.x - 82, spot.y + 6, 164, 10, 5)
+        ctx.fillStyle = PALETTE.coin
+        if (fill > 0) cssRound(ctx, spot.x - 82, spot.y + 6, 164 * fill, 10, 5)
+        this.text(`MONUMENT ${state.save.monument + 1}/5  $${remaining}`, spot.x, spot.y, 13, '#FFF', true)
+      }
     }
 
     const next = GATES[state.save.gates]

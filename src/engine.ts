@@ -48,12 +48,16 @@ export type SaveV1 = {
   lifetime: number
   contract: Contract | null
   contractsDone: number
+  helpers: number
+  monument: number // completed stages
+  monumentPaid: number // coins poured into the next stage
 }
 
 // sound/feel pings for the shell to drain each frame: the engine never touches
 // audio, it just says what happened
 export type Ping = 'swing' | 'break' | 'coin' | 'buy' | 'gate' | 'contract'
 export type Spark = Point & { vx: number; vy: number; age: number }
+export type Helper = Point & { stack: Ore[]; rockId: number | null; mineTimer: number; sellTimer: number }
 
 export type GameState = {
   time: number
@@ -62,11 +66,13 @@ export type GameState = {
   rocks: Rock[]
   chips: Chip[]
   sparks: Spark[]
+  helpers: Helper[]
   floats: FloatText[]
   shake: number // seconds of screen shake remaining
   pings: Ping[]
   sellTimer: number
   gateTimer: number
+  monumentTimer: number
   shopCooldown: number
   save: SaveV1
 }
@@ -84,6 +90,17 @@ export const SHOP: Record<UpgradeId, Point> = {
   pack: { x: 440, y: 240 },
   boots: { x: 360, y: 300 },
 }
+// hired auto-miners: they mine and sell WITHOUT you, at half value, and never
+// count toward contracts, so playing yourself always beats watching
+export const HELPER_PAD: Point = { x: 140, y: 320 }
+export const HELPER_PRICES = [100, 400, 1600]
+export const HELPER_CAPACITY = 4
+
+// the monument: the long-run coin sink. five build stages poured like a gate,
+// standing at its pad, each stage visibly grows the statue on the skyline.
+export const MONUMENT: Point = { x: 80, y: 165 }
+export const MONUMENT_STAGES = [400, 1200, 3500, 9000, 20000]
+
 export const GATES = [
   { x: 270, y: SURFACE + ZONE_H, price: 150 },
   { x: 270, y: SURFACE + ZONE_H * 2, price: 900 },
@@ -111,6 +128,9 @@ export const defaultSave = (): SaveV1 => ({
   lifetime: 0,
   contract: null,
   contractsDone: 0,
+  helpers: 0,
+  monument: 0,
+  monumentPaid: 0,
 })
 
 // contracts are generated DETERMINISTICALLY from how many came before, so the
@@ -134,15 +154,18 @@ export function createGame(save: SaveV1 = defaultSave()): GameState {
     rocks: LAYOUT.map(([ore, x, y], index) => ({ id: index, x, y, ore, hp: ORES[ore].hp, respawn: 0, wobble: 0 })),
     chips: [],
     sparks: [],
+    helpers: [],
     floats: [],
     shake: 0,
     pings: [],
     sellTimer: 0,
     gateTimer: 0,
+    monumentTimer: 0,
     shopCooldown: 0,
     save: structuredClone(save),
   }
   if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, state.save.gates)
+  for (let i = 0; i < state.save.helpers; i++) spawnHelper(state)
   return state
 }
 
@@ -172,6 +195,9 @@ export function step(state: GameState, seconds: number, input: Input = { x: 0, y
   updateChips(state, dt)
   sell(state, dt)
   shop(state)
+  hireHelper(state)
+  updateHelpers(state, dt)
+  monument(state, dt)
   gate(state, dt)
   state.shake = Math.max(0, state.shake - dt)
   for (const spark of state.sparks) {
@@ -315,6 +341,101 @@ function gate(state: GameState, dt: number): void {
     state.shake = 0.4 // the wall coming down is the biggest beat in the game
     state.pings.push('gate')
     state.floats.push({ x: next.x, y: next.y - 80, text: 'OPEN!', age: 0, kind: 'coin' })
+  }
+}
+
+function spawnHelper(state: GameState): void {
+  state.helpers.push({ x: DEPOT.x + 40 + state.helpers.length * 20, y: DEPOT.y + 40, stack: [], rockId: null, mineTimer: 0, sellTimer: 0 })
+}
+
+// the helper pad hires like a shop pad: stand on it with the price
+function hireHelper(state: GameState): void {
+  if (state.shopCooldown > 0 || state.save.helpers >= HELPER_PRICES.length) return
+  const price = HELPER_PRICES[state.save.helpers]
+  if (state.save.coins < price || distance(HELPER_PAD, state.player) > 66) return
+  state.save.coins -= price
+  state.save.helpers += 1
+  state.shopCooldown = 1
+  spawnHelper(state)
+  state.pings.push('buy')
+  state.floats.push({ x: HELPER_PAD.x, y: HELPER_PAD.y - 60, text: `-${price}`, age: 0, kind: 'coin' })
+}
+
+// helpers walk to the nearest live rock in the open world, chip one chunk at a
+// time into a small stack, then walk it to the depot and sell at HALF value.
+// they never touch contracts: the listed ore stays the player's business.
+function updateHelpers(state: GameState, dt: number): void {
+  const maxY = SURFACE + ZONE_H * (state.save.gates + 1) - 40
+  for (const helper of state.helpers) {
+    if (helper.stack.length >= HELPER_CAPACITY) {
+      walkToward(helper, DEPOT, 120 * dt)
+      if (distance(helper, DEPOT) < 60) {
+        helper.sellTimer += dt
+        if (helper.sellTimer >= 0.2) {
+          helper.sellTimer = 0
+          const ore = helper.stack.pop() as Ore
+          const value = Math.max(1, Math.floor(ORES[ore].value / 2))
+          state.save.coins += value
+          state.save.lifetime += value
+          state.floats.push({ x: DEPOT.x, y: DEPOT.y - 40, text: `+${value}`, age: 0, kind: 'ore' })
+        }
+      }
+      continue
+    }
+    const target = helper.rockId !== null ? state.rocks[helper.rockId] : null
+    if (!target || target.respawn > 0 || target.y > maxY) {
+      helper.rockId = nearestLiveRock(state, helper, maxY)
+      continue
+    }
+    if (distance(helper, target) > 70) {
+      walkToward(helper, target, 120 * dt)
+      continue
+    }
+    helper.mineTimer += dt
+    if (helper.mineTimer < 1.4) continue
+    helper.mineTimer = 0
+    target.wobble = 1
+    target.hp -= 1
+    helper.stack.push(target.ore)
+    if (target.hp <= 0) target.respawn = 9
+  }
+}
+
+function nearestLiveRock(state: GameState, from: Point, maxY: number): number | null {
+  let best: number | null = null
+  let bestDistance = Infinity
+  for (const rock of state.rocks) {
+    if (rock.respawn > 0 || rock.y > maxY) continue
+    const d = distance(rock, from)
+    if (d < bestDistance) { bestDistance = d; best = rock.id }
+  }
+  return best
+}
+
+function walkToward(who: Point, to: Point, span: number): void {
+  const dx = to.x - who.x
+  const dy = to.y - who.y
+  const length = Math.max(1, Math.hypot(dx, dy))
+  who.x += dx / length * span
+  who.y += dy / length * span
+}
+
+// the monument pours like a gate: stand at the pad, coins flow into the stage
+function monument(state: GameState, dt: number): void {
+  const stagePrice = MONUMENT_STAGES[state.save.monument]
+  if (!stagePrice || state.save.coins === 0 || distance(MONUMENT, state.player) > 70) { state.monumentTimer = 0; return }
+  state.monumentTimer += dt
+  if (state.monumentTimer < 0.05) return
+  state.monumentTimer = 0
+  const pour = Math.min(4, state.save.coins, stagePrice - state.save.monumentPaid)
+  state.save.coins -= pour
+  state.save.monumentPaid += pour
+  if (state.save.monumentPaid >= stagePrice) {
+    state.save.monument += 1
+    state.save.monumentPaid = 0
+    state.shake = 0.4
+    state.pings.push('contract')
+    state.floats.push({ x: MONUMENT.x, y: MONUMENT.y - 60, text: `STAGE ${state.save.monument}!`, age: 0, kind: 'coin' })
   }
 }
 
