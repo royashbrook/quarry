@@ -211,17 +211,17 @@ export const travelPickNeeded = (mine: number): number => 3 + mine
 // pool; need and reward scale gently with count. reward pays double the market
 // value, which is the whole reason to chase the listed ore.
 export function nextContract(contractsDone: number, gates: number, mine = 0): Contract {
-  // anyone who has opened a mine has proven the whole ladder: the pool goes
-  // wide immediately so deep players never see a stone errand again
-  const reach = mine > 0 ? 2 : gates
+  // the pool is what the player can REACH RIGHT NOW: the current mine's open
+  // gates, nothing else. (a mine-count widening once asked for crystal while
+  // the fresh mine's crystal zone was still sealed. the mine multiplier is
+  // what makes a fresh mine's stone contract worth taking at depth.)
   const pool: Ore[] = (['stone', 'coal'] as Ore[])
-    .concat(reach >= 1 ? (['coal', 'copper', 'gold'] as Ore[]) : [])
-    .concat(reach >= 2 ? (['gold', 'crystal'] as Ore[]) : [])
+    .concat(gates >= 1 ? (['coal', 'copper', 'gold'] as Ore[]) : [])
+    .concat(gates >= 2 ? (['gold', 'crystal'] as Ore[]) : [])
   // stride 31 is coprime to every possible pool length (2, 5, 7), so the
-  // sequence visits the whole pool instead of parking on one ore (the old
-  // stride 5 landed on copper forever at pool length 5)
+  // sequence visits the whole pool instead of parking on one ore
   const ore = pool[(contractsDone * 31 + 17) % pool.length]
-  const need = 10 + ((contractsDone * 7) % 4) * 5 + reach * 5 + mine * 5
+  const need = 10 + ((contractsDone * 7) % 4) * 5 + gates * 5 + mine * 5
   return { ore, need, done: 0, reward: need * ORES[ore].value * 2 }
 }
 
