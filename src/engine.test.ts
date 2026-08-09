@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   capacity, CHUTE_RATE, CHUTES, createGame, currentMine, DEPOT, GATES, migrateV1, mineMultiplier, TRAVEL, travelPrice, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
-  buyUpgrade, chuteRate, hireHelperNow, mineReach, swingSeconds, upgradeMax, upgradePrice, walkSpeed, zoneOf,
+  buyUpgrade, chuteRate, defaultSave, hireHelperNow, mineReach, prestigeMultiplier, prestigeNow, swingSeconds, upgradeMax, upgradePrice, walkSpeed, zoneOf,
 } from './engine'
 import { decodeSave, loadSave, storeSave } from './save'
 
@@ -505,5 +505,48 @@ describe('contract variety (#roy: stuck on copper)', () => {
       const open = nextContract(n, 2, 1) // both gates open: full pool fair game
       expect(['stone', 'coal', 'copper', 'gold', 'crystal']).toContain(open.ore)
     }
+  })
+})
+
+describe('prestige (#6)', () => {
+  it('refuses until the monument is complete', () => {
+    const game = createGame()
+    game.save.monument = 4
+    expect(prestigeNow(game)).toBe(false)
+    expect(game.save.prestige).toBe(0)
+  })
+
+  it('resets the world, keeps the legacy, and multiplies every earning path', () => {
+    const game = createGame()
+    game.save.monument = MONUMENT_STAGES.length
+    game.save.coins = 9999
+    game.save.mine = 1
+    game.save.mines = [{ helpers: 3, gates: 2, gatePaid: 0 }, { helpers: 1, gates: 1, gatePaid: 5 }]
+    game.save.lifetime = 123456
+    game.save.contractsDone = 22
+    expect(prestigeNow(game)).toBe(true)
+    expect(game.save.prestige).toBe(1)
+    expect(game.save.coins).toBe(0)
+    expect(game.save.monument).toBe(0)
+    expect(game.save.mine).toBe(0)
+    expect(game.save.mines).toEqual([{ helpers: 0, gates: 0, gatePaid: 0 }])
+    expect(game.save.lifetime).toBe(123456) // the legacy stays
+    expect(game.save.contractsDone).toBe(22)
+    expect(prestigeMultiplier(game.save)).toBe(1.5)
+    // a stone now sells for 1 * 1.5 rounded
+    game.stack = ['stone', 'stone']
+    game.rocks.forEach(rock => { rock.respawn = 99 })
+    Object.assign(game.player, DEPOT)
+    runFor(game, 1)
+    expect(game.save.coins).toBe(4) // round(1 × 1.5) = 2 per stone, twice
+  })
+
+  it('sells scale by the exact legacy multiplier', () => {
+    const game = createGame({ ...defaultSave(), prestige: 2 }) // ×2 legacy
+    game.stack = ['gold']
+    game.rocks.forEach(rock => { rock.respawn = 99 })
+    Object.assign(game.player, DEPOT)
+    runFor(game, 1)
+    expect(game.save.coins).toBe(16) // gold 8 × 2
   })
 })

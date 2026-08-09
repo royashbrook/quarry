@@ -1,6 +1,6 @@
 import QRCode from 'qrcode'
 import './style.css'
-import { buyUpgrade, capacity, createGame, currentMine, HELPER_PRICES, hireHelperNow, mineMultiplier, mineReach, pickDamage, runFor, step, upgradeMax, upgradePrice, UPGRADES, walkSpeed, WORLD, type GameState, type Point, type UpgradeId } from './engine'
+import { buyUpgrade, capacity, createGame, currentMine, HELPER_PRICES, hireHelperNow, mineMultiplier, mineReach, MONUMENT_STAGES, pickDamage, prestigeMultiplier, prestigeNow, runFor, step, upgradeMax, upgradePrice, UPGRADES, walkSpeed, WORLD, type GameState, type Point, type UpgradeId } from './engine'
 import { Controls } from './input'
 import { Renderer } from './render'
 import { loadSave, rescueUrl, storeSave } from './save'
@@ -168,6 +168,20 @@ function renderShop(): void {
     <button data-hire="1" ${helperMaxed || state.save.coins < helperPrice ? 'disabled' : ''}>${helperMaxed ? 'MAX' : `${helperPrice}`}</button></div>`)
   list.innerHTML = rows.join('')
 }
+document.querySelector('#stats-list')?.addEventListener('click', event => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('#prestige-button')
+  if (!button) return
+  if (!button.dataset.armed) {
+    button.dataset.armed = '1'
+    button.textContent = '!? EVERYTHING RESETS, TAP AGAIN'
+    return
+  }
+  if (prestigeNow(state)) {
+    storeSave(state.save)
+    closeSheets()
+  }
+})
+
 document.querySelector('#shop-list')?.addEventListener('click', event => {
   const button = (event.target as HTMLElement).closest('button')
   if (!button || button.disabled) return
@@ -182,7 +196,11 @@ function renderStats(): void {
   if (!list) return
   const save = state.save
   const staffed = save.mines.reduce((total, mine) => total + mine.helpers, 0)
-  list.innerHTML = `<dl class="stats-row">
+  // the monument's reward: start over richer. two taps, like every teardown.
+  const prestigeRow = save.monument >= MONUMENT_STAGES.length
+    ? `<button id="prestige-button" class="big-button prestige">⭐ NEW QUARRY ×${prestigeMultiplier(save) + 0.5}</button>`
+    : ''
+  list.innerHTML = prestigeRow + `<dl class="stats-row">
     <dt>coins</dt><dd>${save.coins}</dd>
     <dt>lifetime earned</dt><dd>${save.lifetime}</dd>
     <dt>mine</dt><dd>${save.mine + 1}</dd>

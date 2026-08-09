@@ -61,6 +61,7 @@ export type SaveV2 = {
   monumentPaid: number
   mine: number // which mine you are standing in
   mines: MineState[] // index 0 = the first mine; staffed old mines keep paying
+  prestige: number // completed monuments: each adds +50% to all earnings
 }
 export type SaveV1 = {
   version: 1
@@ -175,6 +176,7 @@ export const defaultSave = (): SaveV2 => ({
   monumentPaid: 0,
   mine: 0,
   mines: [{ helpers: 0, gates: 0, gatePaid: 0 }],
+  prestige: 0,
 })
 
 /** v1 saves carry one implicit mine; fold it into the v2 shape losslessly. */
@@ -190,6 +192,7 @@ export function migrateV1(old: SaveV1): SaveV2 {
     monumentPaid: old.monumentPaid,
     mine: 0,
     mines: [{ helpers: old.helpers, gates: old.gates, gatePaid: old.gatePaid }],
+    prestige: 0,
   }
 }
 
@@ -199,6 +202,31 @@ export const currentMine = (save: SaveV2): MineState => save.mines[save.mine]
 // each deeper mine multiplies ore values, and every price scales to match, so
 // the numbers grow but the decisions stay the same shape
 export const mineMultiplier = (mine: number): number => Math.pow(3, mine)
+
+/** the prestige multiplier: +50% per completed monument, applied to earnings */
+export const prestigeMultiplier = (save: SaveV2): number => 1 + save.prestige * 0.5
+
+/** all-in earnings scale: depth times legacy */
+export const earnScale = (state: GameState): number => mineMultiplier(state.save.mine) * prestigeMultiplier(state.save)
+
+/**
+ * complete the monument, then start over richer: a fresh first morning with
+ * everything reset except lifetime, contracts-done, and the multiplier.
+ */
+export function prestigeNow(state: GameState): boolean {
+  if (state.save.monument < MONUMENT_STAGES.length) return false
+  const kept = {
+    lifetime: state.save.lifetime,
+    contractsDone: state.save.contractsDone,
+    prestige: state.save.prestige + 1,
+  }
+  const fresh = createGame({ ...defaultSave(), ...kept })
+  Object.assign(state, fresh)
+  state.floats.push({ x: 270, y: 500, text: `NEW QUARRY ×${prestigeMultiplier(state.save)}`, age: 0, kind: 'coin' })
+  state.shake = 0.5
+  state.pings.push('contract')
+  return true
+}
 
 // travel: the shaft at the bottom of zone 3. costs coins AND a pick tier, so
 // the frontier needs both wealth and equipment.
@@ -376,7 +404,7 @@ function sell(state: GameState, dt: number): void {
   if (state.sellTimer < 0.09) return
   state.sellTimer = 0
   const ore = state.stack.pop() as Ore
-  const value = ORES[ore].value * mineMultiplier(state.save.mine)
+  const value = Math.round(ORES[ore].value * earnScale(state))
   state.save.coins += value
   state.save.lifetime += value
   state.pings.push('coin')
@@ -404,7 +432,7 @@ function updateTransit(state: GameState, dt: number): void {
   for (const item of state.transit) {
     item.remaining -= dt
     if (item.remaining <= 0) {
-      const value = Math.max(1, Math.floor(ORES[item.ore].value * chuteRate(state) * mineMultiplier(state.save.mine)))
+      const value = Math.max(1, Math.floor(ORES[item.ore].value * chuteRate(state) * earnScale(state)))
       state.save.coins += value
       state.save.lifetime += value
       state.pings.push('coin')
@@ -518,6 +546,9 @@ function gate(state: GameState, dt: number): void {
     mine.gatePaid = 0
     state.shake = 0.4 // the wall coming down is the biggest beat in the game
     state.pings.push('gate')
+    for (let i = 0; i < 14; i++) {
+      state.sparks.push({ x: 40 + i * 36, y: next.y, vx: -60 + (i * 41) % 120, vy: -140 - (i * 29) % 120, age: 0 })
+    }
     state.floats.push({ x: next.x, y: next.y - 80, text: 'OPEN!', age: 0, kind: 'coin' })
   }
 }
@@ -558,7 +589,7 @@ function travel(state: GameState, dt: number): void {
 function passiveIncome(state: GameState, dt: number): void {
   let rate = 0
   for (let m = 0; m < state.save.mine; m++) {
-    rate += state.save.mines[m].helpers * mineMultiplier(m) * 0.4
+    rate += state.save.mines[m].helpers * mineMultiplier(m) * prestigeMultiplier(state.save) * 0.4
   }
   if (rate === 0) return
   state.passiveBucket += rate * dt
@@ -588,7 +619,7 @@ function updateHelpers(state: GameState, dt: number): void {
         if (helper.sellTimer >= 0.2) {
           helper.sellTimer = 0
           const ore = helper.stack.pop() as Ore
-          const value = Math.max(1, Math.floor(ORES[ore].value * mineMultiplier(state.save.mine) / 2))
+          const value = Math.max(1, Math.floor(ORES[ore].value * earnScale(state) / 2))
           state.save.coins += value
           state.save.lifetime += value
           state.floats.push({ x: DEPOT.x, y: DEPOT.y - 40, text: `+${value}`, age: 0, kind: 'ore' })

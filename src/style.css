@@ -220,3 +220,5 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 .about { text-align: center; font-size: .8rem; color: #8a7a70; margin: 1rem 0 0; }
 .about a { color: #a04848; font-weight: 700; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+.big-button.prestige { width: 100%; margin-bottom: .8rem; font-size: 1rem; padding: .8rem; }
