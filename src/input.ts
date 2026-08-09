@@ -10,12 +10,16 @@ export class Controls {
   constructor(private canvas: HTMLCanvasElement, private view: () => Viewport, private cameraY: () => number) {
     addEventListener('keydown', event => {
       const game = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
+      if (event.metaKey || event.ctrlKey || event.altKey) return // shortcuts stay native
       if (!game.includes(event.key.toLowerCase())) return // only consume our keys
       this.keys.add(event.key.toLowerCase())
       this.readKeys()
       event.preventDefault()
     })
     addEventListener('keyup', event => { this.keys.delete(event.key.toLowerCase()); this.readKeys() })
+    // a blurred window must never keep walking on a held key
+    addEventListener('blur', () => { this.keys.clear(); this.readKeys() })
+    addEventListener('pagehide', () => { this.keys.clear(); this.readKeys() })
     canvas.addEventListener('pointerdown', event => this.down(event))
     canvas.addEventListener('pointermove', event => this.move(event))
     canvas.addEventListener('pointerup', event => this.up(event))

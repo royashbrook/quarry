@@ -238,7 +238,7 @@ export const travelPickNeeded = (mine: number): number => 3 + mine
 // sequence is testable and identical across reloads. deeper zones widen the ore
 // pool; need and reward scale gently with count. reward pays double the market
 // value, which is the whole reason to chase the listed ore.
-export function nextContract(contractsDone: number, gates: number, mine = 0): Contract {
+export function nextContract(contractsDone: number, gates: number, mine = 0, legacy = 1): Contract {
   // the pool is what the player can REACH RIGHT NOW: the current mine's open
   // gates, nothing else. (a mine-count widening once asked for crystal while
   // the fresh mine's crystal zone was still sealed. the mine multiplier is
@@ -250,7 +250,9 @@ export function nextContract(contractsDone: number, gates: number, mine = 0): Co
   // sequence visits the whole pool instead of parking on one ore
   const ore = pool[(contractsDone * 31 + 17) % pool.length]
   const need = 10 + ((contractsDone * 7) % 4) * 5 + gates * 5 + mine * 5
-  return { ore, need, done: 0, reward: need * ORES[ore].value * 2 }
+  // double the LOCAL market: what a chunk actually sells for here and now
+  const reward = Math.round(need * ORES[ore].value * 2 * mineMultiplier(mine) * legacy)
+  return { ore, need, done: 0, reward }
 }
 
 export function createGame(save: SaveV2 = defaultSave()): GameState {
@@ -276,7 +278,7 @@ export function createGame(save: SaveV2 = defaultSave()): GameState {
     save: structuredClone(save),
     passiveBucket: 0,
   }
-  if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates, state.save.mine)
+  if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates, state.save.mine, prestigeMultiplier(state.save))
   for (let i = 0; i < currentMine(state.save).helpers; i++) spawnHelper(state)
   return state
 }
@@ -452,7 +454,7 @@ function creditContract(state: GameState, ore: Ore): void {
   state.save.lifetime += contract.reward
   state.save.contractsDone += 1
   state.floats.push({ x: DEPOT.x, y: DEPOT.y - 96, text: `BONUS +${contract.reward}!`, age: 0, kind: 'coin' })
-  state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates, state.save.mine)
+  state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates, state.save.mine, prestigeMultiplier(state.save))
   state.shake = 0.2
   state.pings.push('contract')
 }
@@ -577,6 +579,9 @@ function travel(state: GameState, dt: number): void {
     state.transit = []
     state.player.x = 270
     state.player.y = 430
+    // the old mine's contract may name ore this fresh mine cannot reach yet:
+    // roll a new one priced for the new ground
+    state.save.contract = nextContract(state.save.contractsDone, 0, state.save.mine, prestigeMultiplier(state.save))
     state.shake = 0.5
     state.pings.push('gate')
     state.floats.push({ x: 270, y: 500, text: `MINE ${state.save.mine + 1}!`, age: 0, kind: 'coin' })
