@@ -5,19 +5,15 @@ import { expect, test } from '@playwright/test'
 // a real gesture must leave the context running.
 test.use({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] } })
 
-test('a real press wakes the audio context to running', async ({ page }) => {
+test('the PLAY press itself wakes the audio context', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('canvas')).toBeVisible()
   expect(await page.evaluate(() => window.__quarry.audioState())).toBe('none')
-  const box = (await page.locator('canvas').boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await page.mouse.down()
-  await page.mouse.up()
+  await page.click('#play-button') // the first gesture of every session
   await expect.poll(() => page.evaluate(() => window.__quarry.audioState())).toBe('running')
 })
 
 test('mining while awake drains pings instead of stockpiling them', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/'); await page.click('#play-button')
   const box = (await page.locator('canvas').boundingBox())!
   await page.mouse.click(box.x + 40, box.y + 40) // wake audio with a real gesture
   await page.evaluate(() => {

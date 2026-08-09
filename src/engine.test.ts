@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   capacity, CHUTE_RATE, CHUTES, createGame, currentMine, DEPOT, GATES, migrateV1, mineMultiplier, TRAVEL, travelPrice, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
-  chuteRate, mineReach, swingSeconds, upgradeMax, upgradePrice, walkSpeed, zoneOf,
+  buyUpgrade, chuteRate, hireHelperNow, mineReach, swingSeconds, upgradeMax, upgradePrice, walkSpeed, zoneOf,
 } from './engine'
 import { decodeSave, loadSave, storeSave } from './save'
 
@@ -302,14 +302,29 @@ describe('ore chute (#7)', () => {
     expect(game.save.coins).toBe(4 * Math.floor(8 * CHUTE_RATE)) // gold 8 -> 6 each
   })
 
-  it('never credits the contract: hand delivery stays the premium route', () => {
+  it('credits the contract on arrival: gathered is gathered (roy, #16)', () => {
     const game = createGame()
     game.save.contract = { ore: 'stone', need: 3, done: 0, reward: 6 }
     game.stack = ['stone', 'stone', 'stone']
+    game.rocks.forEach(rock => { rock.respawn = 99 })
     Object.assign(game.player, CHUTES[0])
-    runFor(game, 10)
-    expect(game.save.coins).toBeGreaterThan(0)
-    expect(game.save.contract!.done).toBe(0)
+    runFor(game, 12)
+    // all three arrived: contract completed, bonus paid, fresh contract rolled
+    expect(game.save.contractsDone).toBe(1)
+    expect(game.save.coins).toBe(3 * 1 + 6) // discounted stone still floors to 1, plus bonus
+  })
+
+  it('menu purchases work from anywhere via the engine api', () => {
+    const game = createGame()
+    game.player.x = 270; game.player.y = 2000 // deep underground, nowhere near a pad
+    game.save.coins = upgradePrice('pick', 0) + 5 // not enough for level 2 at 20
+    expect(buyUpgrade(game, 'pick')).toBe(true)
+    expect(game.save.upgrades.pick).toBe(1)
+    expect(buyUpgrade(game, 'pick')).toBe(false) // cannot afford level 2
+    game.save.coins = 99999
+    expect(hireHelperNow(game)).toBe(true)
+    expect(currentMine(game.save).helpers).toBe(1)
+    expect(game.helpers.length).toBe(1)
   })
 
   it('deeper chutes take longer to pay', () => {
@@ -472,5 +487,23 @@ describe('the living shop (#14)', () => {
     game.save.upgrades.reach = 2
     runFor(game, 3)
     expect(game.stack.length).toBeGreaterThan(0)
+  })
+})
+
+describe('contract variety (#roy: stuck on copper)', () => {
+  it('visits every ore in the pool instead of parking on one', () => {
+    const seen = new Set<string>()
+    for (let n = 0; n < 10; n++) seen.add(nextContract(n, 1).ore)
+    expect(seen.size).toBeGreaterThanOrEqual(4) // old stride served copper 10/10
+  })
+
+  it('mine 2 contracts never ask for stone errands and scale their asks', () => {
+    const ores = new Set<string>()
+    for (let n = 0; n < 14; n++) {
+      const contract = nextContract(n, 0, 1) // fresh mine 2: gates closed
+      ores.add(contract.ore)
+      expect(contract.need).toBeGreaterThanOrEqual(25)
+    }
+    expect([...ores].some(ore => ore === 'gold' || ore === 'crystal')).toBe(true)
   })
 })
