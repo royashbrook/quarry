@@ -48,7 +48,7 @@ function updateCamera(dt: number): void {
 
 const controls = new Controls(canvas, () => viewport, () => cameraY)
 const renderer = new Renderer(canvas)
-renderer.audioState = () => (muted ? 'muted' : audio?.state ?? 'none')
+renderer.audioState = () => (muted ? 'muted' : idleSuspended ? 'running' : audio?.state ?? 'none')
 let previous = performance.now()
 let saveClock = 0
 let paused = true // the start card owns boot; PLAY unpauses
@@ -62,6 +62,10 @@ function frame(now: number): void {
     updateCamera(elapsed)
   }
   state.pings.splice(0).forEach(bleep) // drain feel events even while paused
+  if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
+    idleSuspended = true
+    void audio.suspend() // drops the system "playing" indicator between sounds
+  }
   renderer.draw(state, controls.joystick, viewport, cameraY)
   saveClock += elapsed
   if (saveClock >= 1 && !resetting) {
@@ -247,23 +251,21 @@ muteButton?.addEventListener('click', () => {
   localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
   syncMute()
 })
-// a tiny silent wav: playing ANY html5 audio promotes ios out of the ambient
-// category, which is what the ringer switch mutes. belt for the audioSession
-// suspenders, works on every ios version.
-const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
-let unlocked = false
+// a game, not a music app (roy: the playing indicator never went away). the
+// ambient category mixes with the player's own audio and respects the ringer
+// switch, which is how well-behaved ios games sound. the engine also suspends
+// itself after idle so the system audio indicator drops when nothing bleeps.
+let lastBleepAt = 0
+let idleSuspended = false
 function wakeAudio(): void {
   if (!audio) {
     audio = new AudioContext()
-    // ios 17.4+: declare playback intent directly; harmless everywhere else
     const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
-    if (session) session.type = 'playback'
+    if (session) session.type = 'ambient'
   }
-  if (audio.state === 'suspended') void audio.resume()
-  if (!unlocked) {
-    unlocked = true
-    const kick = new Audio(SILENT_WAV)
-    kick.play().catch(() => { unlocked = false }) // retry on the next gesture
+  if (audio.state === 'suspended') {
+    idleSuspended = false
+    void audio.resume()
   }
 }
 addEventListener('pointerdown', wakeAudio)
@@ -280,6 +282,7 @@ const TONES: Record<string, [number, number, OscillatorType]> = {
 }
 function bleep(kind: string): void {
   if (muted || !audio || audio.state !== 'running') return
+  lastBleepAt = performance.now()
   const [freq, seconds, shape] = TONES[kind] ?? TONES.coin
   const osc = audio.createOscillator()
   const gain = audio.createGain()
@@ -334,5 +337,5 @@ window.__quarry = {
   joystickOrigin: () => (controls.joystick.active ? { ...controls.joystick.origin } : null),
   pause: on => { paused = on },
   setTime: seconds => { state.time = seconds },
-  audioState: () => (muted ? 'muted' : audio?.state ?? 'none'),
+  audioState: () => (muted ? 'muted' : idleSuspended ? 'idle' : audio?.state ?? 'none'),
 }
