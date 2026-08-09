@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   capacity, CHUTE_RATE, CHUTES, createGame, currentMine, DEPOT, GATES, migrateV1, mineMultiplier, TRAVEL, travelPrice, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
-  upgradePrice, walkSpeed, zoneOf,
+  chuteRate, mineReach, swingSeconds, upgradeMax, upgradePrice, walkSpeed, zoneOf,
 } from './engine'
 import { decodeSave, loadSave, storeSave } from './save'
 
@@ -80,7 +80,7 @@ describe('shop (deliberate buys, #4)', () => {
     game.player.x = SHOP.pick.x
     game.player.y = SHOP.pick.y - 80
     runFor(game, 3, { x: 0, y: 1 })
-    expect(game.save.upgrades).toEqual({ pick: 0, pack: 0, boots: 0 })
+    expect(game.save.upgrades).toEqual({ pick: 0, pack: 0, boots: 0, swing: 0, reach: 0, cart: 0 })
     expect(currentMine(game.save).helpers).toBe(0)
     expect(game.save.coins).toBe(99999)
   })
@@ -104,7 +104,7 @@ describe('shop (deliberate buys, #4)', () => {
   it('upgrades change the derived numbers', () => {
     const game = createGame()
     const base = { pick: pickDamage(game), pack: capacity(game), boots: walkSpeed(game) }
-    game.save.upgrades = { pick: 2, pack: 2, boots: 2 }
+    game.save.upgrades = { pick: 2, pack: 2, boots: 2, swing: 0, reach: 0, cart: 0 }
     expect(pickDamage(game)).toBe(base.pick + 2)
     expect(capacity(game)).toBe(base.pack + 8)
     expect(walkSpeed(game)).toBe(base.boots + 60)
@@ -425,5 +425,52 @@ describe('pours survive real frame cadence (the 60fps regression)', () => {
     Object.assign(monumentGame.player, MONUMENT)
     runFrames(monumentGame, 2)
     expect(monumentGame.save.monumentPaid).toBeGreaterThan(0)
+  })
+})
+
+describe('the living shop (#14)', () => {
+  it('every opened mine extends every max, so travel revives the shop', () => {
+    expect(upgradeMax('pick', 1)).toBe(8)
+    expect(upgradeMax('pick', 2)).toBe(12)
+    expect(upgradeMax('swing', 3)).toBe(5 + 6)
+  })
+
+  it('a maxed-for-mine-one pad reopens after travel', () => {
+    const game = createGame()
+    game.save.upgrades.pick = 8 // mine-1 max
+    game.save.coins = 999999
+    Object.assign(game.player, SHOP.pick)
+    runFor(game, 2)
+    expect(game.save.upgrades.pick).toBe(8) // still capped
+    game.save.mines.push({ helpers: 0, gates: 0, gatePaid: 0 }) // opened mine 2
+    game.player.y += 200; runFor(game, 0.3)
+    Object.assign(game.player, SHOP.pick)
+    runFor(game, 2)
+    expect(game.save.upgrades.pick).toBe(9) // the shop lives again
+  })
+
+  it('the new tracks change how the game plays, not just numbers', () => {
+    const game = createGame()
+    const baseSwing = swingSeconds(game)
+    const baseReach = mineReach(game)
+    const baseRate = chuteRate(game)
+    game.save.upgrades.swing = 3
+    game.save.upgrades.reach = 2
+    game.save.upgrades.cart = 2
+    expect(swingSeconds(game)).toBeLessThan(baseSwing)
+    expect(mineReach(game)).toBe(baseReach + 28)
+    expect(chuteRate(game)).toBeCloseTo(baseRate + 0.1)
+  })
+
+  it('reach actually mines a rock the base radius cannot touch', () => {
+    const game = createGame()
+    const rock = game.rocks[0]
+    game.player.x = rock.x - 100 // outside base 84, inside 84+28
+    game.player.y = rock.y
+    runFor(game, 3)
+    expect(game.stack.length).toBe(0)
+    game.save.upgrades.reach = 2
+    runFor(game, 3)
+    expect(game.stack.length).toBeGreaterThan(0)
   })
 })

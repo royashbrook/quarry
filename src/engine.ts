@@ -28,11 +28,19 @@ export type Rock = {
 export type FloatText = Point & { text: string; age: number; kind: 'coin' | 'ore' }
 export type Chip = Point & { vx: number; vy: number; age: number; ore: Ore }
 
-export type UpgradeId = 'pick' | 'pack' | 'boots'
-export const UPGRADES: Record<UpgradeId, { base: number; growth: number; max: number }> = {
-  pick: { base: 12, growth: 1.7, max: 8 }, // damage per swing
-  pack: { base: 10, growth: 1.6, max: 10 }, // carry capacity
-  boots: { base: 15, growth: 1.8, max: 6 }, // walk speed
+export type UpgradeId = 'pick' | 'pack' | 'boots' | 'swing' | 'reach' | 'cart'
+export const UPGRADES: Record<UpgradeId, { base: number; growth: number; max: number; stride: number }> = {
+  pick: { base: 12, growth: 1.7, max: 8, stride: 4 }, // damage per swing
+  pack: { base: 10, growth: 1.6, max: 10, stride: 5 }, // carry capacity
+  boots: { base: 15, growth: 1.8, max: 6, stride: 3 }, // walk speed
+  swing: { base: 40, growth: 1.8, max: 5, stride: 3 }, // swings come faster
+  reach: { base: 60, growth: 1.9, max: 4, stride: 2 }, // mine from farther away
+  cart: { base: 80, growth: 1.9, max: 4, stride: 2 }, // chute pays more, travels faster
+}
+
+/** every opened mine extends every track: the shop never goes permanently dark */
+export function upgradeMax(id: UpgradeId, minesUnlocked: number): number {
+  return UPGRADES[id].max + UPGRADES[id].stride * Math.max(0, minesUnlocked - 1)
 }
 
 // a delivery contract: sell `need` chunks of `ore`, collect a fat bonus. the
@@ -57,7 +65,7 @@ export type SaveV2 = {
 export type SaveV1 = {
   version: 1
   coins: number
-  upgrades: Record<UpgradeId, number>
+  upgrades: Record<'pick' | 'pack' | 'boots', number>
   gates: number
   gatePaid: number
   lifetime: number
@@ -112,13 +120,16 @@ export const DEPOT = { x: 100, y: 250 }
 // the shop column hugs the right edge in one vertical line: you can reach any
 // pad without your path crossing another, and buying is deliberate (see shop())
 export const SHOP: Record<UpgradeId, Point> = {
-  pick: { x: 462, y: 205 },
-  pack: { x: 462, y: 265 },
-  boots: { x: 462, y: 325 },
+  pick: { x: 462, y: 195 },
+  pack: { x: 462, y: 245 },
+  boots: { x: 462, y: 295 },
+  swing: { x: 462, y: 345 },
+  reach: { x: 462, y: 395 },
+  cart: { x: 462, y: 445 },
 }
 // hired auto-miners: they mine and sell WITHOUT you, at half value, and never
 // count toward contracts, so playing yourself always beats watching
-export const HELPER_PAD: Point = { x: 462, y: 385 }
+export const HELPER_PAD: Point = { x: 462, y: 495 }
 export const HELPER_PRICES = [100, 400, 1600]
 export const HELPER_CAPACITY = 4
 
@@ -156,7 +167,7 @@ const LAYOUT: [Ore, number, number][] = [
 export const defaultSave = (): SaveV2 => ({
   version: 2,
   coins: 0,
-  upgrades: { pick: 0, pack: 0, boots: 0 },
+  upgrades: { pick: 0, pack: 0, boots: 0, swing: 0, reach: 0, cart: 0 },
   lifetime: 0,
   contract: null,
   contractsDone: 0,
@@ -171,7 +182,7 @@ export function migrateV1(old: SaveV1): SaveV2 {
   return {
     version: 2,
     coins: old.coins,
-    upgrades: old.upgrades,
+    upgrades: { swing: 0, reach: 0, cart: 0, ...old.upgrades },
     lifetime: old.lifetime,
     contract: old.contract,
     contractsDone: old.contractsDone,
@@ -240,7 +251,10 @@ export function createGame(save: SaveV2 = defaultSave()): GameState {
 export const pickDamage = (state: GameState): number => 1 + state.save.upgrades.pick
 export const capacity = (state: GameState): number => 8 + state.save.upgrades.pack * 4
 export const walkSpeed = (state: GameState): number => 200 + state.save.upgrades.boots * 30
-export const swingSeconds = (state: GameState): number => 0.55
+export const swingSeconds = (state: GameState): number => 0.55 * Math.pow(0.92, state.save.upgrades.swing)
+export const mineReach = (state: GameState): number => 84 + state.save.upgrades.reach * 14
+export const chuteRate = (state: GameState): number => CHUTE_RATE + state.save.upgrades.cart * 0.05
+export const cartSpeedup = (state: GameState): number => 1 + state.save.upgrades.cart * 0.18
 
 export function upgradePrice(id: UpgradeId, level: number): number {
   const rule = UPGRADES[id]
@@ -308,7 +322,7 @@ function movePlayer(state: GameState, dt: number, input: Input): void {
 // standing by a live rock swings automatically; each swing lands one chunk on
 // the stack (if there is room) and chips the rock's hp. exhausted rocks respawn.
 function mine(state: GameState, dt: number): void {
-  const target = state.rocks.find(rock => rock.respawn === 0 && distance(rock, state.player) < 84)
+  const target = state.rocks.find(rock => rock.respawn === 0 && distance(rock, state.player) < mineReach(state))
   state.player.swinging = Boolean(target) && state.stack.length < capacity(state)
   if (!target || !state.player.swinging) { state.player.swing = 0; return }
   state.player.swing += dt
@@ -386,7 +400,7 @@ function chute(state: GameState, dt: number): void {
   if (state.chuteTimer < 0.12) return
   state.chuteTimer = 0
   const ore = state.stack.pop() as Ore
-  const seconds = 1.5 + spot.y / 300 // depth = travel time
+  const seconds = (1.5 + spot.y / 300) / cartSpeedup(state) // depth = travel time, better carts shave it
   state.transit.push({ ore, remaining: seconds, total: seconds, fromY: spot.y })
   if (state.transit.length > 80) state.transit.shift() // hard cap, oldest pays never: unreachable in play
   state.pings.push('swing')
@@ -397,7 +411,7 @@ function updateTransit(state: GameState, dt: number): void {
   for (const item of state.transit) {
     item.remaining -= dt
     if (item.remaining <= 0) {
-      const value = Math.max(1, Math.floor(ORES[item.ore].value * CHUTE_RATE * mineMultiplier(state.save.mine)))
+      const value = Math.max(1, Math.floor(ORES[item.ore].value * chuteRate(state) * mineMultiplier(state.save.mine)))
       state.save.coins += value
       state.save.lifetime += value
       state.pings.push('coin')
@@ -412,7 +426,7 @@ function buyablePads(state: GameState): { id: string; at: Point; price: number; 
   const pads: { id: string; at: Point; price: number; buy: () => void }[] = []
   for (const id of Object.keys(SHOP) as UpgradeId[]) {
     const level = state.save.upgrades[id]
-    if (level >= UPGRADES[id].max) continue
+    if (level >= upgradeMax(id, state.save.mines.length)) continue
     pads.push({
       id,
       at: SHOP[id],
@@ -437,8 +451,11 @@ function buyablePads(state: GameState): { id: string; at: Point; price: number; 
 // a pad never buys anything. the latch stops a held stand from chain-buying:
 // you must step off the pad before it will charge again.
 function chargeBuys(state: GameState, dt: number): void {
-  const pad = buyablePads(state).find(candidate =>
-    distance(candidate.at, state.player) < 60 && state.save.coins >= candidate.price)
+  // NEAREST pad, and you must be ON it (the column packs pads 50 apart, so a
+  // generous radius would let one pad's stand buy its neighbor)
+  const pad = buyablePads(state)
+    .filter(candidate => distance(candidate.at, state.player) < 26 && state.save.coins >= candidate.price)
+    .sort((a, b) => distance(a.at, state.player) - distance(b.at, state.player))[0]
   if (state.buyLatch && (!pad || pad.id !== state.buyLatch)) state.buyLatch = null
   if (!pad || state.player.moving || pad.id === state.buyLatch) { state.buyCharge = null; return }
   if (state.buyCharge?.id !== pad.id) state.buyCharge = { id: pad.id, t: 0 }

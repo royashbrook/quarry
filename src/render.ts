@@ -2,7 +2,7 @@
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
 // a 13 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
-import { BUY_CHARGE_SECONDS, capacity, CHUTES, currentMine, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, mineMultiplier, MONUMENT, MONUMENT_STAGES, ORES, pickDamage, RAIL_X, SHOP, SURFACE, TRAVEL, travelPickNeeded, travelPrice, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
+import { BUY_CHARGE_SECONDS, capacity, CHUTES, currentMine, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, mineMultiplier, MONUMENT, MONUMENT_STAGES, ORES, pickDamage, RAIL_X, SHOP, SURFACE, TRAVEL, travelPickNeeded, travelPrice, upgradeMax, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
@@ -227,17 +227,26 @@ export class Renderer {
     ctx.lineWidth = 3
     ctx.beginPath(); ctx.arc(14, -92, 6, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke()
     const swingPhase = player.swinging ? Math.sin((player.swing / 0.55) * Math.PI) : 0
+    // pick material follows its level band: wood, iron, gold, diamond
+    const pickLevel = state.save.upgrades.pick
+    const pickHead = pickLevel >= 12 ? '#7BD8D0' : pickLevel >= 8 ? '#F2C84B' : pickLevel >= 4 ? '#B9C0C9' : '#8D9096'
     ctx.save()
     ctx.translate(18, -70)
     ctx.rotate(-0.8 + swingPhase * 1.5)
     ctx.fillStyle = PALETTE.wood
     roundRect(ctx, -4, -46, 8, 50, 4)
-    ctx.fillStyle = '#8D9096'
+    ctx.fillStyle = pickHead
     ctx.beginPath()
     ctx.moveTo(-20, -46); ctx.quadraticCurveTo(0, -60, 20, -46)
     ctx.quadraticCurveTo(0, -50, -20, -46)
     ctx.fill()
     ctx.restore()
+    // the pack grows with capacity so the upgrade shows on your back
+    const packSize = 10 + Math.min(18, state.save.upgrades.pack * 2)
+    ctx.fillStyle = '#6B4A2F'
+    roundRect(ctx, -25 - packSize * 0.5, -70, packSize, 26 + packSize * 0.6, 8)
+    ctx.fillStyle = 'rgba(255,255,255,.18)'
+    roundRect(ctx, -25 - packSize * 0.5, -70, packSize, 8, 4)
     ctx.restore()
     // carried stack rides behind the miner
     const baseX = player.x - player.facing * 30
@@ -282,7 +291,7 @@ export class Renderer {
     const ctx = this.context
     const spot = SHOP[id]
     const level = state.save.upgrades[id]
-    const maxed = level >= UPGRADES[id].max
+    const maxed = level >= upgradeMax(id, state.save.mines.length)
     const price = upgradePrice(id, level)
     const affordable = !maxed && state.save.coins >= price
     this.shadow(spot.x, spot.y + 14, 56, 13)
@@ -414,10 +423,10 @@ export class Renderer {
     const depot = project({ x: DEPOT.x, y: DEPOT.y - 4 })
     if (onScreen(depot)) this.text('SELL', depot.x, depot.y, 16, '#FFF', true)
 
-    const icons: Record<UpgradeId, string> = { pick: '⛏', pack: '🎒', boots: '👢' }
+    const icons: Record<UpgradeId, string> = { pick: '⛏', pack: '🎒', boots: '👢', swing: '💪', reach: '🧲', cart: '🛒' }
     for (const id of Object.keys(SHOP) as UpgradeId[]) {
       const level = state.save.upgrades[id]
-      const maxed = level >= UPGRADES[id].max
+      const maxed = level >= upgradeMax(id, state.save.mines.length)
       const price = upgradePrice(id, level)
       const affordable = !maxed && state.save.coins >= price
       const spot = project({ x: SHOP[id].x, y: SHOP[id].y + 2 })
