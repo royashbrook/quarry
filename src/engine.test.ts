@@ -497,13 +497,13 @@ describe('contract variety (#roy: stuck on copper)', () => {
     expect(seen.size).toBeGreaterThanOrEqual(4) // old stride served copper 10/10
   })
 
-  it('mine 2 contracts never ask for stone errands and scale their asks', () => {
-    const ores = new Set<string>()
-    for (let n = 0; n < 14; n++) {
-      const contract = nextContract(n, 0, 1) // fresh mine 2: gates closed
-      ores.add(contract.ore)
-      expect(contract.need).toBeGreaterThanOrEqual(25)
+  it('never asks for ore the current gates cannot reach (roy hit a crystal ask in a sealed mine)', () => {
+    for (let n = 0; n < 20; n++) {
+      const fresh = nextContract(n, 0, 1) // fresh mine 2: only zone 1 open
+      expect(['stone', 'coal']).toContain(fresh.ore)
+      expect(fresh.need).toBeGreaterThanOrEqual(15) // still a deep-mine-sized ask
+      const open = nextContract(n, 2, 1) // both gates open: full pool fair game
+      expect(['stone', 'coal', 'copper', 'gold', 'crystal']).toContain(open.ore)
     }
-    expect([...ores].some(ore => ore === 'gold' || ore === 'crystal')).toBe(true)
   })
 })
