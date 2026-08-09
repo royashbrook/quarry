@@ -550,3 +550,36 @@ describe('prestige (#6)', () => {
     expect(game.save.coins).toBe(16) // gold 8 × 2
   })
 })
+
+describe('release gate (ludo cold review)', () => {
+  it('travel rolls the contract into the fresh mine, never stranding an ask', () => {
+    const game = createGame()
+    game.save.mines[0].gates = 2
+    game.save.upgrades.pick = 3
+    game.save.contract = { ore: 'crystal', need: 5, done: 2, reward: 100 }
+    game.save.coins = travelPrice(0)
+    Object.assign(game.player, TRAVEL)
+    runFor(game, 25)
+    expect(game.save.mine).toBe(1)
+    expect(['stone', 'coal']).toContain(game.save.contract!.ore) // fresh mine, gates closed
+    expect(game.save.contract!.done).toBe(0)
+  })
+
+  it('the contract pays exactly what it promised, multipliers included', () => {
+    const game = createGame({ ...defaultSave(), prestige: 1, mine: 1, mines: [
+      { helpers: 0, gates: 2, gatePaid: 0 }, { helpers: 0, gates: 0, gatePaid: 0 },
+    ] })
+    game.save.mine = 1
+    const contract = game.save.contract!
+    // double the local market: base value × mine 3x × legacy 1.5x × 2
+    expect(contract.reward).toBe(Math.round(contract.need * ORES[contract.ore].value * 2 * 3 * 1.5))
+    game.save.contract = { ore: 'stone', need: 1, done: 0, reward: 9 } // 1×2×3×1.5
+    game.stack = ['stone']
+    game.rocks.forEach(rock => { rock.respawn = 99 })
+    Object.assign(game.player, DEPOT)
+    const before = game.save.coins
+    runFor(game, 1)
+    // sale: round(1×3×1.5)=5, bonus: 9 exactly as displayed
+    expect(game.save.coins - before).toBe(5 + 9)
+  })
+})

@@ -39,6 +39,8 @@ export class Renderer {
   audioState: () => string = () => 'none'
   /** set by the shell; 'move' | 'mine' | null drives the first-minute coach */
   coachStep: 'move' | 'mine' | null = null
+  /** css px of ui docked at the screen bottom (the nav); hud stays above it */
+  bottomInset = 0
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d')
@@ -610,20 +612,20 @@ export class Renderer {
       }
     }
     // depth marker bottom-left: which mine, which stratum
-    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, view.cssHeight - 18, 13, 'rgba(244,235,221,.85)', true)
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, view.cssHeight - this.bottomInset - 18, 13, 'rgba(244,235,221,.85)', true)
     // the first-minute coach: two lessons for a fresh save, advanced by the
     // real actions, drawn in the same hud language as everything else
     if (this.coachStep) {
       ctx.fillStyle = 'rgba(61,50,48,.85)'
-      cssRound(ctx, view.cssWidth / 2 - 110, view.cssHeight - 96, 220, 34, 17)
-      this.text(this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE' : 'WALK UP TO A ROCK ⛏', view.cssWidth / 2, view.cssHeight - 73, 14, '#FFD45E')
+      cssRound(ctx, view.cssWidth / 2 - 110, view.cssHeight - this.bottomInset - 96, 220, 34, 17)
+      this.text(this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE' : 'WALK UP TO A ROCK ⛏', view.cssWidth / 2, view.cssHeight - this.bottomInset - 73, 14, '#FFD45E')
     }
     // sound status, only when something is off: muted or never woken
     const soundState = this.audioState()
     if (soundState !== 'running') {
       ctx.fillStyle = 'rgba(61,50,48,.75)'
-      cssRound(ctx, view.cssWidth / 2 - 92, view.cssHeight - 44, 184, 30, 15)
-      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - 24, 13, '#FFF')
+      cssRound(ctx, view.cssWidth / 2 - 92, view.cssHeight - this.bottomInset - 44, 184, 30, 15)
+      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 13, '#FFF')
     }
   }
 

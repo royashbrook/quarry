@@ -1,0 +1,23 @@
+name: pr checks
+
+# the merge gate runs BEFORE merge: typecheck, unit, build, and the browser
+# suite on every pull request, so main only receives proven work.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test:e2e

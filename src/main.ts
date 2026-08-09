@@ -116,9 +116,15 @@ if (startStats) {
 // a fresh save gets two coached beats: move, then mine. each advances on the
 // real action and the whole thing never appears again once lifetime coins exist.
 let coachOrigin: Point | null = null
+function measureNav(): void {
+  renderer.bottomInset = bottomNav && !bottomNav.hasAttribute('hidden') ? bottomNav.offsetHeight : 0
+}
+addEventListener('resize', () => requestAnimationFrame(measureNav))
+
 playButton?.addEventListener('click', () => {
   startCard?.setAttribute('hidden', '')
   bottomNav?.removeAttribute('hidden')
+  requestAnimationFrame(measureNav)
   paused = false
   if (state.save.lifetime === 0) {
     renderer.coachStep = 'move'
