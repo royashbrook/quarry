@@ -61,6 +61,9 @@ function frame(now: number): void {
     step(state, elapsed, controls.vector)
     updateCamera(elapsed)
   }
+  if (renderer.coachStep === 'move' && coachOrigin
+    && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
+  if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = null
   state.pings.splice(0).forEach(bleep) // drain feel events even while paused
   if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
     idleSuspended = true
@@ -110,10 +113,17 @@ if (startStats) {
     ? 'a tiny mining game'
     : `mine ${save.mine + 1} · ${save.coins} · ${save.lifetime} lifetime`
 }
+// a fresh save gets two coached beats: move, then mine. each advances on the
+// real action and the whole thing never appears again once lifetime coins exist.
+let coachOrigin: Point | null = null
 playButton?.addEventListener('click', () => {
   startCard?.setAttribute('hidden', '')
   bottomNav?.removeAttribute('hidden')
   paused = false
+  if (state.save.lifetime === 0) {
+    renderer.coachStep = 'move'
+    coachOrigin = { x: state.player.x, y: state.player.y }
+  }
 })
 
 function closeSheets(): void {

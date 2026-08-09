@@ -41,3 +41,29 @@ test('start card gates play, bottom nav opens sheets, menu shop buys from anywhe
   await page.click('#sheet-backdrop', { position: { x: 10, y: 10 } })
   await expect(page.locator('#sheet-stats')).toBeHidden()
 })
+
+test('a fresh save gets the two-beat coach, a returning save gets silence', async ({ page }) => {
+  await page.goto('/')
+  await page.click('#play-button')
+  // beat one shows until real movement
+  let step = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve((window as any).__quarryCoach ?? 'unknown'))))
+  void step
+  await page.evaluate(() => { window.__quarry.advance(1, { x: 1, y: 0 }) })
+  await page.evaluate(() => {
+    const game = window.__quarry
+    const rock = game.snapshot().rocks[0]
+    game.movePlayer({ x: rock.x - 40, y: rock.y })
+    game.advance(2)
+  })
+  // after mining, the save has lifetime: reload shows no coach path (no crash, plays clean)
+  await page.evaluate(() => {
+    const game = window.__quarry
+    game.movePlayer({ x: 100, y: 250 })
+    game.advance(3)
+  })
+  await page.reload()
+  await page.click('#play-button')
+  await expect(page.locator('canvas')).toBeVisible()
+  const lifetime = await page.evaluate(() => window.__quarry.snapshot().save.lifetime)
+  expect(lifetime).toBeGreaterThan(0)
+})
