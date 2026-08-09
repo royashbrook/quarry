@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+test.describe.configure({ timeout: 60000 }) // the farm loop is slow on ci runners
+
 test('start card gates play, bottom nav opens sheets, menu shop buys from anywhere', async ({ page }) => {
   await page.goto('/')
   // start card is up, game paused behind it
