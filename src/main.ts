@@ -1,6 +1,6 @@
 import QRCode from 'qrcode'
 import './style.css'
-import { createGame, runFor, step, WORLD, type GameState, type Point } from './engine'
+import { buyUpgrade, capacity, createGame, currentMine, HELPER_PRICES, hireHelperNow, mineMultiplier, mineReach, pickDamage, runFor, step, upgradeMax, upgradePrice, UPGRADES, walkSpeed, WORLD, type GameState, type Point, type UpgradeId } from './engine'
 import { Controls } from './input'
 import { Renderer } from './render'
 import { loadSave, rescueUrl, storeSave } from './save'
@@ -51,7 +51,7 @@ const renderer = new Renderer(canvas)
 renderer.audioState = () => (muted ? 'muted' : audio?.state ?? 'none')
 let previous = performance.now()
 let saveClock = 0
-let paused = false
+let paused = true // the start card owns boot; PLAY unpauses
 let resetting = false // once armed-and-fired, nothing may write the save again
 
 function frame(now: number): void {
@@ -87,6 +87,128 @@ if (dialog && saveButton && qr && link) {
     dialog.showModal()
   })
 }
+
+// ===== start card, bottom nav, sheets (#17) =====
+const startCard = document.querySelector<HTMLElement>('#start-card')
+const startStats = document.querySelector<HTMLElement>('#start-stats')
+const playButton = document.querySelector<HTMLButtonElement>('#play-button')
+const bottomNav = document.querySelector<HTMLElement>('#bottom-nav')
+const backdrop = document.querySelector<HTMLElement>('#sheet-backdrop')
+const sheets: Record<string, HTMLElement | null> = {
+  shop: document.querySelector('#sheet-shop'),
+  stats: document.querySelector('#sheet-stats'),
+  settings: document.querySelector('#sheet-settings'),
+}
+
+if (startStats) {
+  const save = state.save
+  startStats.textContent = save.lifetime === 0
+    ? 'a tiny mining game'
+    : `mine ${save.mine + 1} · ${save.coins} · ${save.lifetime} lifetime`
+}
+playButton?.addEventListener('click', () => {
+  startCard?.setAttribute('hidden', '')
+  bottomNav?.removeAttribute('hidden')
+  paused = false
+})
+
+function closeSheets(): void {
+  for (const sheet of Object.values(sheets)) sheet?.setAttribute('hidden', '')
+  backdrop?.setAttribute('hidden', '')
+  bottomNav?.querySelectorAll('button').forEach(button => button.removeAttribute('data-active'))
+}
+backdrop?.addEventListener('click', closeSheets)
+bottomNav?.addEventListener('click', event => {
+  const button = (event.target as HTMLElement).closest('button')
+  const name = button?.dataset.sheet
+  if (!name) return
+  const sheet = sheets[name]
+  const isOpen = sheet && !sheet.hasAttribute('hidden')
+  closeSheets()
+  if (isOpen || !sheet) return
+  sheet.removeAttribute('hidden')
+  backdrop?.removeAttribute('hidden')
+  button?.setAttribute('data-active', '')
+  if (name === 'shop') renderShop()
+  if (name === 'stats') renderStats()
+})
+
+// the menu shop: same engine purchase path as the world pads, from anywhere
+const SHOP_META: Record<UpgradeId, { name: string; desc: string; icon: string }> = {
+  pick: { name: 'PICKAXE', desc: 'more damage per swing', icon: '⛏' },
+  pack: { name: 'PACK', desc: 'carry more chunks', icon: '🎒' },
+  boots: { name: 'BOOTS', desc: 'walk faster', icon: '👢' },
+  swing: { name: 'SWING', desc: 'swing more often', icon: '💪' },
+  reach: { name: 'REACH', desc: 'mine from farther away', icon: '🧲' },
+  cart: { name: 'CART', desc: 'chute pays more, travels faster', icon: '🛒' },
+}
+function renderShop(): void {
+  const list = document.querySelector('#shop-list')
+  if (!list) return
+  const rows: string[] = []
+  for (const id of Object.keys(SHOP_META) as UpgradeId[]) {
+    const meta = SHOP_META[id]
+    const level = state.save.upgrades[id]
+    const max = upgradeMax(id, state.save.mines.length)
+    const maxed = level >= max
+    const price = maxed ? 0 : upgradePrice(id, level)
+    rows.push(`<div class="shop-row"><span>${meta.icon}</span>
+      <span class="grow"><span class="name">${meta.name} LV${level}/${max}</span><br><span class="desc">${meta.desc}</span></span>
+      <button data-buy="${id}" ${maxed || state.save.coins < price ? 'disabled' : ''}>${maxed ? 'MAX' : `${price}`}</button></div>`)
+  }
+  const mine = currentMine(state.save)
+  const helperMaxed = mine.helpers >= HELPER_PRICES.length
+  const helperPrice = helperMaxed ? 0 : HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine)
+  rows.push(`<div class="shop-row"><span>👷</span>
+    <span class="grow"><span class="name">HELPER ×${mine.helpers}/${HELPER_PRICES.length}</span><br><span class="desc">mines and sells on their own, stays in this mine</span></span>
+    <button data-hire="1" ${helperMaxed || state.save.coins < helperPrice ? 'disabled' : ''}>${helperMaxed ? 'MAX' : `${helperPrice}`}</button></div>`)
+  list.innerHTML = rows.join('')
+}
+document.querySelector('#shop-list')?.addEventListener('click', event => {
+  const button = (event.target as HTMLElement).closest('button')
+  if (!button || button.disabled) return
+  if (button.dataset.buy) buyUpgrade(state, button.dataset.buy as UpgradeId)
+  if (button.dataset.hire) hireHelperNow(state)
+  storeSave(state.save)
+  renderShop()
+})
+
+function renderStats(): void {
+  const list = document.querySelector('#stats-list')
+  if (!list) return
+  const save = state.save
+  const staffed = save.mines.reduce((total, mine) => total + mine.helpers, 0)
+  list.innerHTML = `<dl class="stats-row">
+    <dt>coins</dt><dd>${save.coins}</dd>
+    <dt>lifetime earned</dt><dd>${save.lifetime}</dd>
+    <dt>mine</dt><dd>${save.mine + 1}</dd>
+    <dt>contracts done</dt><dd>${save.contractsDone}</dd>
+    <dt>monument</dt><dd>${save.monument}/5</dd>
+    <dt>crew across mines</dt><dd>${staffed}</dd>
+    <dt>pick damage</dt><dd>${pickDamage(state)}</dd>
+    <dt>pack size</dt><dd>${capacity(state)}</dd>
+    <dt>walk speed</dt><dd>${walkSpeed(state)}</dd>
+    <dt>mining reach</dt><dd>${mineReach(state)}</dd>
+  </dl>`
+}
+
+// second reset entry point in the settings sheet, same two-tap contract
+if (!import.meta.env.PROD) {
+  const checkButton = document.querySelector<HTMLButtonElement>('#check-updates')
+  checkButton?.addEventListener('click', () => { checkButton.textContent = '↻ DEV BUILD' })
+}
+
+const resetButton2 = document.querySelector<HTMLButtonElement>('#reset-save2')
+resetButton2?.addEventListener('click', () => {
+  if (!resetButton2.dataset.armed) {
+    resetButton2.dataset.armed = '1'
+    resetButton2.textContent = '!? SURE? TAP AGAIN'
+    return
+  }
+  resetting = true
+  localStorage.removeItem('quarry_save_v1')
+  location.reload()
+})
 
 // total reset, two taps: the first arms the button (it turns solid), the
 // second wipes the save and reloads. closing the dialog disarms it.
@@ -189,6 +311,18 @@ if (import.meta.env.PROD && updateToast) {
   probe()
   setInterval(probe, 5 * 60 * 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void probe() })
+  const checkButton = document.querySelector<HTMLButtonElement>('#check-updates')
+  checkButton?.addEventListener('click', async () => {
+    checkButton.textContent = '↻ CHECKING…'
+    await probe()
+    if (!updateToast.hidden) {
+      checkButton.textContent = '↻ UPDATE READY, TAP TO RELOAD'
+      checkButton.onclick = () => location.reload()
+    } else {
+      checkButton.textContent = '✓ UP TO DATE'
+      setTimeout(() => { checkButton.textContent = '↻ CHECK FOR UPDATES' }, 2500)
+    }
+  })
 }
 
 window.__quarry = {

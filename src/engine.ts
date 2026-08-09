@@ -210,12 +210,18 @@ export const travelPickNeeded = (mine: number): number => 3 + mine
 // sequence is testable and identical across reloads. deeper zones widen the ore
 // pool; need and reward scale gently with count. reward pays double the market
 // value, which is the whole reason to chase the listed ore.
-export function nextContract(contractsDone: number, gates: number): Contract {
+export function nextContract(contractsDone: number, gates: number, mine = 0): Contract {
+  // anyone who has opened a mine has proven the whole ladder: the pool goes
+  // wide immediately so deep players never see a stone errand again
+  const reach = mine > 0 ? 2 : gates
   const pool: Ore[] = (['stone', 'coal'] as Ore[])
-    .concat(gates >= 1 ? (['coal', 'copper', 'gold'] as Ore[]) : [])
-    .concat(gates >= 2 ? (['gold', 'crystal'] as Ore[]) : [])
-  const ore = pool[(contractsDone * 5 + 3) % pool.length]
-  const need = 10 + ((contractsDone * 7) % 4) * 5 + gates * 5
+    .concat(reach >= 1 ? (['coal', 'copper', 'gold'] as Ore[]) : [])
+    .concat(reach >= 2 ? (['gold', 'crystal'] as Ore[]) : [])
+  // stride 31 is coprime to every possible pool length (2, 5, 7), so the
+  // sequence visits the whole pool instead of parking on one ore (the old
+  // stride 5 landed on copper forever at pool length 5)
+  const ore = pool[(contractsDone * 31 + 17) % pool.length]
+  const need = 10 + ((contractsDone * 7) % 4) * 5 + reach * 5 + mine * 5
   return { ore, need, done: 0, reward: need * ORES[ore].value * 2 }
 }
 
@@ -242,7 +248,7 @@ export function createGame(save: SaveV2 = defaultSave()): GameState {
     save: structuredClone(save),
     passiveBucket: 0,
   }
-  if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates)
+  if (!state.save.contract) state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates, state.save.mine)
   for (let i = 0; i < currentMine(state.save).helpers; i++) spawnHelper(state)
   return state
 }
@@ -375,20 +381,7 @@ function sell(state: GameState, dt: number): void {
   state.save.lifetime += value
   state.pings.push('coin')
   state.floats.push({ x: DEPOT.x, y: DEPOT.y - 60, text: `+${value}`, age: 0, kind: 'coin' })
-  // contract progress counts on DELIVERY, so the listed ore is worth the trip
-  const contract = state.save.contract
-  if (contract && ore === contract.ore) {
-    contract.done += 1
-    if (contract.done >= contract.need) {
-      state.save.coins += contract.reward
-      state.save.lifetime += contract.reward
-      state.save.contractsDone += 1
-      state.floats.push({ x: DEPOT.x, y: DEPOT.y - 96, text: `BONUS +${contract.reward}!`, age: 0, kind: 'coin' })
-      state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates)
-      state.shake = 0.2
-      state.pings.push('contract')
-    }
-  }
+  creditContract(state, ore)
 }
 
 // stand by a stratum's chute with a stack: chunks drop in one per beat and ride
@@ -416,9 +409,24 @@ function updateTransit(state: GameState, dt: number): void {
       state.save.lifetime += value
       state.pings.push('coin')
       state.floats.push({ x: DEPOT.x + 40, y: DEPOT.y - 40, text: `+${value}`, age: 0, kind: 'ore' })
+      creditContract(state, item.ore) // gathered is gathered: arrival counts
     }
   }
   state.transit = state.transit.filter(item => item.remaining > 0)
+}
+
+function creditContract(state: GameState, ore: Ore): void {
+  const contract = state.save.contract
+  if (!contract || ore !== contract.ore) return
+  contract.done += 1
+  if (contract.done < contract.need) return
+  state.save.coins += contract.reward
+  state.save.lifetime += contract.reward
+  state.save.contractsDone += 1
+  state.floats.push({ x: DEPOT.x, y: DEPOT.y - 96, text: `BONUS +${contract.reward}!`, age: 0, kind: 'coin' })
+  state.save.contract = nextContract(state.save.contractsDone, currentMine(state.save).gates, state.save.mine)
+  state.shake = 0.2
+  state.pings.push('contract')
 }
 
 // every purchasable pad, priced and gated in one place for the charge loop
@@ -431,7 +439,7 @@ function buyablePads(state: GameState): { id: string; at: Point; price: number; 
       id,
       at: SHOP[id],
       price: upgradePrice(id, level),
-      buy: () => { state.save.upgrades[id] = level + 1 },
+      buy: () => { buyUpgrade(state, id) },
     })
   }
   const mine = currentMine(state.save)
@@ -440,10 +448,35 @@ function buyablePads(state: GameState): { id: string; at: Point; price: number; 
       id: 'helper',
       at: HELPER_PAD,
       price: HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine),
-      buy: () => { mine.helpers += 1; spawnHelper(state) },
+      buy: () => { hireHelperNow(state) },
     })
   }
   return pads
+}
+
+/** buy an upgrade by id from anywhere (the menu shop); false if not possible */
+export function buyUpgrade(state: GameState, id: UpgradeId): boolean {
+  const level = state.save.upgrades[id]
+  if (level >= upgradeMax(id, state.save.mines.length)) return false
+  const price = upgradePrice(id, level)
+  if (state.save.coins < price) return false
+  state.save.coins -= price
+  state.save.upgrades[id] = level + 1
+  state.pings.push('buy')
+  return true
+}
+
+/** hire a helper for the CURRENT mine from anywhere; false if capped or broke */
+export function hireHelperNow(state: GameState): boolean {
+  const mine = currentMine(state.save)
+  if (mine.helpers >= HELPER_PRICES.length) return false
+  const price = HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine)
+  if (state.save.coins < price) return false
+  state.save.coins -= price
+  mine.helpers += 1
+  spawnHelper(state)
+  state.pings.push('buy')
+  return true
 }
 
 // stand still on an affordable pad: a ring charges for BUY_CHARGE_SECONDS and
@@ -463,9 +496,7 @@ function chargeBuys(state: GameState, dt: number): void {
   if (state.buyCharge.t < BUY_CHARGE_SECONDS) return
   state.buyCharge = null
   state.buyLatch = pad.id
-  state.save.coins -= pad.price
   pad.buy()
-  state.pings.push('buy')
   state.floats.push({ x: pad.at.x, y: pad.at.y - 60, text: `-${pad.price}`, age: 0, kind: 'coin' })
 }
 

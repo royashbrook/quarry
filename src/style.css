@@ -104,3 +104,119 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   opacity: .7;
 }
 .danger[data-armed] { background: #a04848; opacity: 1; }
+
+/* ===== bottom navigation + sheets (#17), the craftrush pattern ===== */
+#bottom-nav {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: 0;
+  display: flex;
+  gap: .4rem;
+  padding: .5rem .6rem calc(.5rem + env(safe-area-inset-bottom));
+  background: rgb(61 50 48 / .92);
+  z-index: 24; /* above sheets: tabs must switch sheets while one is open */
+}
+#bottom-nav button {
+  flex: 1;
+  padding: .7rem 0;
+  border-radius: 1rem;
+  background: #f4ebdd;
+  border: .15rem solid #3d3230;
+  font-weight: 800;
+  font-size: .85rem;
+  cursor: pointer;
+}
+#bottom-nav button[data-active] { background: #ffd45e; }
+
+#sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgb(61 50 48 / .45);
+  z-index: 21;
+}
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  max-height: 62dvh;
+  overflow-y: auto;
+  background: #f4ebdd;
+  border-radius: 1.6rem 1.6rem 0 0;
+  border-top: .25rem solid #3d3230;
+  padding: 1rem 1rem calc(4.6rem + env(safe-area-inset-bottom));
+  z-index: 22;
+}
+.sheet h2 { text-align: center; margin: 0 0 .8rem; }
+
+.shop-row {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .55rem .6rem;
+  border: .15rem solid #3d3230;
+  border-radius: 1rem;
+  margin-bottom: .5rem;
+  background: #fff;
+}
+.shop-row .grow { flex: 1; }
+.shop-row .name { font-weight: 800; font-size: .95rem; }
+.shop-row .desc { font-size: .78rem; color: #8a7a70; }
+.shop-row button {
+  min-width: 5.6rem;
+  padding: .55rem .6rem;
+  border-radius: .8rem;
+  border: .15rem solid #3d3230;
+  background: #ffd45e;
+  font-weight: 800;
+  cursor: pointer;
+}
+.shop-row button:disabled { background: #ddd5c8; color: #8a7a70; cursor: default; }
+
+.stats-row { display: grid; grid-template-columns: 1fr auto; gap: .3rem .8rem; font-size: .95rem; }
+.stats-row dt { color: #8a7a70; }
+.stats-row dd { margin: 0; font-weight: 800; text-align: right; }
+
+.settings-row { display: grid; gap: .6rem; }
+.settings-row button {
+  padding: .8rem;
+  border-radius: 1rem;
+  border: .15rem solid #3d3230;
+  background: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+.danger-row { border-color: #a04848 !important; color: #a04848; }
+.danger-row[data-armed] { background: #a04848 !important; color: #fff; }
+
+/* start card */
+.sheet-card.start {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: .6rem;
+  background: rgb(143 203 107 / .96);
+  z-index: 30;
+  text-align: center;
+}
+.start h1 { font-size: 3rem; letter-spacing: .06em; color: #3d3230; margin: 0; }
+.start img { border-radius: 1.4rem; }
+.start p { color: #3d3230; font-weight: 700; margin: 0; }
+.big-button {
+  margin-top: .6rem;
+  padding: 1rem 3.4rem;
+  font-size: 1.4rem;
+  font-weight: 800;
+  border-radius: 1.4rem;
+  border: .25rem solid #3d3230;
+  background: #ffd45e;
+  box-shadow: 0 .45rem 0 #3d3230;
+  cursor: pointer;
+}
+.big-button:active { transform: translateY(.3rem); box-shadow: 0 .15rem 0 #3d3230; }
+
+/* [hidden] must always win, even over our own display rules */
+#bottom-nav[hidden], .sheet[hidden], .sheet-card[hidden], #sheet-backdrop[hidden] { display: none !important; }
+
+.about { text-align: center; font-size: .8rem; color: #8a7a70; margin: 1rem 0 0; }
+.about a { color: #a04848; font-weight: 700; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

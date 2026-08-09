@@ -13,9 +13,50 @@
   <body>
     <main>
       <canvas id="game" width="960" height="640" tabindex="0" aria-label="Quarry mining game"></canvas>
-      <button id="save-button" class="round-button" aria-label="Open save card">⛏</button>
-      <button id="mute-button" class="round-button mute-button" aria-label="Toggle sound">🔊</button>
       <button id="update-toast" class="round-button update-toast" hidden aria-label="Update ready, tap to refresh">↻</button>
+
+      <!-- start menu: shown at boot, engine paused behind it -->
+      <div id="start-card" class="sheet-card start" role="dialog" aria-label="Quarry start menu">
+        <img src="/icon.svg" alt="" width="96" height="96" />
+        <h1>QUARRY</h1>
+        <p id="start-stats"></p>
+        <button id="play-button" class="big-button">PLAY</button>
+      </div>
+
+      <!-- bottom navigation: the craftrush pattern -->
+      <nav id="bottom-nav" aria-label="Game menu" hidden>
+        <button data-sheet="shop" aria-label="Open shop">⛏ SHOP</button>
+        <button data-sheet="stats" aria-label="Open stats">📊 STATS</button>
+        <button data-sheet="settings" aria-label="Open settings">⚙ MORE</button>
+      </nav>
+
+      <div id="sheet-backdrop" hidden></div>
+      <section id="sheet-shop" class="sheet" role="dialog" aria-label="Shop" hidden>
+        <h2>SHOP</h2>
+        <div id="shop-list"></div>
+      </section>
+      <section id="sheet-stats" class="sheet" role="dialog" aria-label="Stats" hidden>
+        <h2>STATS</h2>
+        <div id="stats-list"></div>
+      </section>
+      <section id="sheet-settings" class="sheet" role="dialog" aria-label="Settings" hidden>
+        <h2>MORE</h2>
+        <div class="settings-row">
+          <button id="mute-button" aria-label="Toggle sound">🔊 SOUND</button>
+          <button id="save-button" aria-label="Open save card">⛏ SAVE QR</button>
+          <button id="check-updates" aria-label="Check for updates">↻ CHECK FOR UPDATES</button>
+          <button id="reset-save2" aria-label="Reset all progress" class="danger-row">🗑 RESET ALL</button>
+        </div>
+        <p class="about">
+          made with <span aria-hidden="true">🧡</span><span class="sr">love</span> by
+          <a href="https://royashbrook.com" target="_blank" rel="noreferrer">roy</a> +
+          <a href="https://royashbrook.com/agents/" target="_blank" rel="noreferrer">ai</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/royashbrook/quarry" target="_blank" rel="noreferrer">source</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/sponsors/royashbrook" target="_blank" rel="noreferrer">sponsor me</a>
+        </p>
+      </section>
       <dialog id="save-dialog">
         <form method="dialog"><button class="close" aria-label="Close">×</button></form>
         <div class="save-mark">⛏</div>
