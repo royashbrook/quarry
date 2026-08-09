@@ -89,3 +89,18 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 .save-mark { font-size: 2rem; color: #e4863b; }
 #save-qr { display: block; width: min(17rem, 100%); margin: .4rem auto 1rem; border-radius: 1rem; }
 #rescue-link { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; margin: auto; border: .2rem solid #3d3230; border-radius: 50%; font-size: 1.6rem; }
+/* total reset: small, tucked in the corner of the save card, two taps to fire */
+.danger {
+  position: absolute;
+  left: .7rem;
+  bottom: .5rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: .15rem solid #a04848;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: .7;
+}
+.danger[data-armed] { background: #a04848; opacity: 1; }

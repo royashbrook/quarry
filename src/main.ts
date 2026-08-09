@@ -52,6 +52,7 @@ renderer.audioState = () => (muted ? 'muted' : audio?.state ?? 'none')
 let previous = performance.now()
 let saveClock = 0
 let paused = false
+let resetting = false // once armed-and-fired, nothing may write the save again
 
 function frame(now: number): void {
   const elapsed = Math.min(0.05, (now - previous) / 1000)
@@ -63,7 +64,7 @@ function frame(now: number): void {
   state.pings.splice(0).forEach(bleep) // drain feel events even while paused
   renderer.draw(state, controls.joystick, viewport, cameraY)
   saveClock += elapsed
-  if (saveClock >= 1) {
+  if (saveClock >= 1 && !resetting) {
     saveClock = 0
     storeSave(state.save)
   }
@@ -71,7 +72,7 @@ function frame(now: number): void {
 }
 
 requestAnimationFrame(frame)
-addEventListener('pagehide', () => storeSave(state.save))
+addEventListener('pagehide', () => { if (!resetting) storeSave(state.save) })
 
 const dialog = document.querySelector<HTMLDialogElement>('#save-dialog')
 const saveButton = document.querySelector<HTMLButtonElement>('#save-button')
@@ -84,6 +85,26 @@ if (dialog && saveButton && qr && link) {
     qr.src = await QRCode.toDataURL(url, { width: 512, margin: 2, color: { dark: '#3D3230', light: '#F4EBDD' } })
     link.href = url
     dialog.showModal()
+  })
+}
+
+// total reset, two taps: the first arms the button (it turns solid), the
+// second wipes the save and reloads. closing the dialog disarms it.
+const resetButton = document.querySelector<HTMLButtonElement>('#reset-save')
+if (resetButton && dialog) {
+  resetButton.addEventListener('click', () => {
+    if (!resetButton.dataset.armed) {
+      resetButton.dataset.armed = '1'
+      resetButton.textContent = '!?'
+      return
+    }
+    resetting = true
+    localStorage.removeItem('quarry_save_v1')
+    location.reload()
+  })
+  dialog.addEventListener('close', () => {
+    delete resetButton.dataset.armed
+    resetButton.textContent = '🗑'
   })
 }
 

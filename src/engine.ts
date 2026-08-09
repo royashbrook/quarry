@@ -91,6 +91,7 @@ export type GameState = {
   sellTimer: number
   chuteTimer: number
   gateTimer: number
+  travelTimer: number
   monumentTimer: number
   // deliberate buying (#4): stand STILL on a pad to charge a purchase; walking
   // through never buys. after a buy the pad latches until you step away.
@@ -223,6 +224,7 @@ export function createGame(save: SaveV2 = defaultSave()): GameState {
     sellTimer: 0,
     chuteTimer: 0,
     gateTimer: 0,
+    travelTimer: 0,
     monumentTimer: 0,
     buyCharge: null,
     buyLatch: null,
@@ -478,11 +480,11 @@ function travel(state: GameState, dt: number): void {
   const mine = currentMine(state.save)
   if (mine.gates < GATES.length) return // the shaft sits below the last stratum
   if (pickDamage(state) - 1 < travelPickNeeded(state.save.mine)) return
-  if (state.save.coins === 0 || distance(TRAVEL, state.player) > 90) return
+  if (state.save.coins === 0 || distance(TRAVEL, state.player) > 90) { state.travelTimer = 0; return }
   const price = travelPrice(state.save.mine)
-  state.gateTimer += dt
-  if (state.gateTimer < 0.05) return
-  state.gateTimer = 0
+  state.travelTimer += dt
+  if (state.travelTimer < 0.05) return
+  state.travelTimer = 0
   const pour = Math.min(5 * mineMultiplier(state.save.mine), state.save.coins, price - mine.gatePaid)
   state.save.coins -= pour
   mine.gatePaid += pour

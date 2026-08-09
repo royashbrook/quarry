@@ -393,3 +393,37 @@ describe('next mine (#5)', () => {
     expect(game.helpers.length).toBe(2)
   })
 })
+
+describe('pours survive real frame cadence (the 60fps regression)', () => {
+  // the travel shaft was dead on real phones: gate() zeroed the shared timer
+  // every frame, and only the test harness's fixed 50ms steps masked it. this
+  // steps at a real 60fps cadence, which any pour mechanic must survive.
+  const runFrames = (game: ReturnType<typeof createGame>, seconds: number) => {
+    const dt = 1 / 60
+    for (let t = 0; t < seconds; t += dt) runFor(game, dt)
+  }
+
+  it('the shaft pours at 60fps', () => {
+    const game = createGame()
+    game.save.mines[0].gates = 2
+    game.save.upgrades.pick = 3
+    game.save.coins = 500
+    Object.assign(game.player, TRAVEL)
+    runFrames(game, 3)
+    expect(game.save.mines[0].gatePaid).toBeGreaterThan(0)
+  })
+
+  it('gates and the monument still pour at 60fps', () => {
+    const gateGame = createGame()
+    gateGame.save.coins = 50
+    Object.assign(gateGame.player, GATES[0])
+    runFrames(gateGame, 2)
+    expect(gateGame.save.mines[0].gatePaid).toBeGreaterThan(0)
+
+    const monumentGame = createGame()
+    monumentGame.save.coins = 50
+    Object.assign(monumentGame.player, MONUMENT)
+    runFrames(monumentGame, 2)
+    expect(monumentGame.save.monumentPaid).toBeGreaterThan(0)
+  })
+})
