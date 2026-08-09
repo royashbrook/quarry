@@ -68,6 +68,7 @@ export class Renderer {
     ]
     things.sort((a, b) => a.anchor.y - b.anchor.y).forEach(item => item.draw())
     GATES.forEach((gatePos, index) => this.drawGate(state, index)) // walls draw over everything at their line
+    this.drawShaft(state)
     state.chips.forEach(chip => this.drawChip(chip.x, chip.y, chip.ore))
     this.drawSparks(state.sparks)
 
@@ -106,6 +107,15 @@ export class Renderer {
       ctx.fillStyle = color
       ctx.fillRect(left, y0, view.viewWidth, y1 - y0)
     }
+    // strata lips: each boundary gets a shadowed edge and a catch-light rim,
+    // which is most of what makes the bands read as depth instead of stripes
+    for (const edge of [190, SURFACE + ZONE_H, SURFACE + ZONE_H * 2]) {
+      if (edge < top - 20 || edge > bottom + 20) continue
+      ctx.fillStyle = 'rgba(30,24,28,.22)'
+      ctx.fillRect(left, edge - 7, view.viewWidth, 7)
+      ctx.fillStyle = 'rgba(255,255,255,.12)'
+      ctx.fillRect(left, edge, view.viewWidth, 3)
+    }
     // sediment lines, fixed pattern, and buried speckles for texture
     ctx.strokeStyle = PALETTE.strataLine
     ctx.lineWidth = 2
@@ -119,6 +129,16 @@ export class Renderer {
     for (let y = Math.floor(top / 130) * 130; y < bottom; y += 130) {
       const x = 60 + ((y * 7919) % 420)
       if (y > 230) { ctx.beginPath(); ctx.arc(x, y + 40, 7, 0, Math.PI * 2); ctx.fill() }
+    }
+    // dust motes drift in the deeper strata: cheap ambience, deterministic
+    if (!this.reducedMotion && bottom > SURFACE + ZONE_H) {
+      ctx.fillStyle = 'rgba(255,255,255,.12)'
+      for (let i = 0; i < 14; i++) {
+        const y = SURFACE + ZONE_H + ((i * 173 + state.time * 9) % (ZONE_H * 2))
+        if (y < top || y > bottom) continue
+        const x = 40 + ((i * 97) % 460) + Math.sin(state.time * 0.7 + i) * 18
+        ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill()
+      }
     }
     // deep zone gets faint crystal glints
     if (bottom > SURFACE + ZONE_H * 2) {
@@ -174,6 +194,10 @@ export class Renderer {
     ctx.save()
     ctx.translate(rock.x, rock.y)
     ctx.rotate(wobble)
+    // deeper strata read darker: the same rock sits moodier the farther down
+    const depthDim = rock.y > SURFACE + ZONE_H * 2 ? 0.82 : rock.y > SURFACE + ZONE_H ? 0.9 : 1
+    if (depthDim < 1) ctx.filter = `brightness(${depthDim})`
+    
     ctx.fillStyle = PALETTE.ore[rock.ore]
     lump(ctx, -size * 0.4, -size * 0.35, size * 0.62)
     lump(ctx, size * 0.34, -size * 0.3, size * 0.55)
@@ -208,9 +232,19 @@ export class Renderer {
     ctx.save()
     ctx.translate(player.x, player.y + bob)
     ctx.scale(player.facing, 1)
+    if (player.moving && !this.reducedMotion) ctx.rotate(0.05) // lean into the walk
     ctx.fillStyle = '#4A5A78'
     roundRect(ctx, -20, -34, 17, 36, 8, stride * 6)
     roundRect(ctx, 3, -34, 17, 36, 8, -stride * 6)
+    // off-arm swings opposite the stride
+    ctx.save()
+    ctx.translate(-20, -70)
+    ctx.rotate(stride * 0.5)
+    ctx.fillStyle = '#E4863B'
+    roundRect(ctx, -6, 0, 12, 34, 6)
+    ctx.fillStyle = '#F2C9A2'
+    ctx.beginPath(); ctx.arc(0, 36, 7, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
     ctx.fillStyle = '#E4863B'
     roundRect(ctx, -25, -78, 50, 52, 16)
     ctx.fillStyle = '#F2B04A'
@@ -400,6 +434,29 @@ export class Renderer {
     for (let i = 0; i < helper.stack.length; i++) {
       this.drawChip(helper.x - 18, helper.y - 28 - i * 9, helper.stack[i])
     }
+  }
+
+  // the shaft at the bottom of the world: visible once you can stand near it
+  private drawShaft(state: GameState): void {
+    const ctx = this.context
+    if (currentMine(state.save).gates < GATES.length) return
+    const x = TRAVEL.x
+    const y = TRAVEL.y
+    ctx.fillStyle = 'rgba(20,16,20,.85)'
+    ctx.beginPath(); ctx.ellipse(x, y, 92, 34, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = PALETTE.wood
+    roundRect(ctx, x - 104, y - 40, 16, 46, 5)
+    roundRect(ctx, x + 88, y - 40, 16, 46, 5)
+    roundRect(ctx, x - 108, y - 48, 216, 14, 6)
+    // ladder disappearing down
+    ctx.strokeStyle = '#B5804F'
+    ctx.lineWidth = 5
+    ctx.beginPath(); ctx.moveTo(x - 18, y - 8); ctx.lineTo(x - 12, y + 26); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + 18, y - 8); ctx.lineTo(x + 12, y + 26); ctx.stroke()
+    for (let rung = 0; rung < 3; rung++) {
+      ctx.beginPath(); ctx.moveTo(x - 16 + rung, y + rung * 10); ctx.lineTo(x + 16 - rung, y + rung * 10); ctx.stroke()
+    }
+    this.ring(x, y, 96, 38, state.save.coins > 0)
   }
 
   private drawGate(state: GameState, index: number): void {
