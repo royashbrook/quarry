@@ -356,7 +356,7 @@ if (import.meta.env.PROD && updateToast) {
   })
 }
 
-window.__quarry = {
+if (import.meta.env.DEV || import.meta.env.MODE === 'test') window.__quarry = {
   snapshot: () => structuredClone(state),
   movePlayer: point => { state.player.x = point.x; state.player.y = point.y },
   advance: (seconds, input) => runFor(state, seconds, input),
