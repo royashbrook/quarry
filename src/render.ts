@@ -611,8 +611,11 @@ export class Renderer {
         this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, '#FFD45E', true)
       }
     }
-    // depth marker bottom-left: which mine, which stratum
-    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, view.cssHeight - this.bottomInset - 18, 13, 'rgba(244,235,221,.85)', true)
+    // depth status lives in the top-left column with the other always-on hud:
+    // the bottom strip belongs to conditional pills (coach, sound) and the nav
+    const contractNarrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - 300) <= 150
+    const depthY = contractNarrow ? pad + 132 : pad + 100
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, depthY, 13, 'rgba(61,50,48,.75)', true)
     // the first-minute coach: two lessons for a fresh save, advanced by the
     // real actions, drawn in the same hud language as everything else
     if (this.coachStep) {
