@@ -1,7 +1,7 @@
 {
   "name": "Quarry",
   "short_name": "Quarry",
-  "description": "Mine rocks, fill your pack, sell, upgrade, dig deeper. Free, no ads, works offline.",
+  "description": "Mine rocks, fill your pack, sell, upgrade, dig deeper. No ads, no lives, no timers, nothing to buy, no accounts, no cookies, nothing sold or shared. Works offline.",
   "start_url": "/",
   "display": "fullscreen",
   "orientation": "portrait-primary",
@@ -23,6 +23,12 @@
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
