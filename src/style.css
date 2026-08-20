@@ -236,3 +236,10 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   box-shadow: 0 .2rem 0 #3d3230;
 }
 #about-dialog .about { margin: .4rem 0; }
+
+/* roy's maker's mark, the house colophon (canonical: blame-web MakerMark.svelte) */
+.maker-mark { font-family: ui-monospace, monospace; font-size: .78rem; color: #8b8f99; }
+.maker-mark a { color: #3d3230; text-decoration: underline; font-weight: 700; }
+.maker-mark a.mark-sponsor { color: #d9a441; }
+.mark-heart { width: .85em; height: .85em; fill: #e0746a; vertical-align: -.1em; }
+.mark-dot { opacity: .45; }
