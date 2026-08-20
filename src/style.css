@@ -243,3 +243,10 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 .maker-mark a.mark-sponsor { color: #d9a441; }
 .mark-heart { width: .85em; height: .85em; fill: #e0746a; vertical-align: -.1em; }
 .mark-dot { opacity: .45; }
+
+/* the about dialog reads top to bottom: title, what the game is, the ethos as
+   the section footer, then the maker's mark under a hairline as the colophon */
+#about-title { margin: .2rem 0 .6rem; }
+.about-body { margin: 0 0 .8rem; font-size: .95rem; line-height: 1.5; }
+.about-ethos { margin: 0 0 1rem; color: #8a7a70; font-size: .82rem; font-weight: 700; line-height: 1.45; }
+.about-dialog .maker-mark, #about-dialog .maker-mark { margin: 0; padding-top: .8rem; border-top: .12rem solid rgb(61 50 48 / .15); }
