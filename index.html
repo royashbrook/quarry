@@ -25,6 +25,7 @@
         <h1>QUARRY</h1>
         <p id="start-stats"></p>
         <button id="play-button" class="big-button">PLAY</button>
+        <button id="about-open" class="round-button about-button" aria-label="About">ABOUT</button>
       </div>
 
       <!-- bottom navigation: the craftrush pattern -->
@@ -50,9 +51,13 @@
           <button id="save-button" aria-label="Open save card">⛏ SAVE QR</button>
           <button id="check-updates" aria-label="Check for updates">↻ CHECK FOR UPDATES</button>
           <button id="reset-save2" aria-label="Reset all progress" class="danger-row">🗑 RESET ALL</button>
+          <button id="about-open2" aria-label="About">🧡 ABOUT</button>
         </div>
+      </section>
+      <dialog id="about-dialog" aria-label="About Quarry">
+        <form method="dialog"><button class="close" aria-label="Close">×</button></form>
         <p class="about">
-          made with <span aria-hidden="true">🧡</span><span class="sr">love</span> by
+          made with love <span aria-hidden="true">🧡</span> by
           <a href="https://royashbrook.com" target="_blank" rel="noreferrer">roy</a> +
           <a href="https://royashbrook.com/agents/" target="_blank" rel="noreferrer">ai</a>
           <span aria-hidden="true">·</span>
@@ -60,7 +65,9 @@
           <span aria-hidden="true">·</span>
           <a href="https://github.com/sponsors/royashbrook" target="_blank" rel="noreferrer">sponsor me</a>
         </p>
-      </section>
+        <p class="about">no ads, no lives, no timers, nothing to buy, no accounts, no cookies,
+        nothing sold or shared.</p>
+      </dialog>
       <dialog id="save-dialog">
         <form method="dialog"><button class="close" aria-label="Close">×</button></form>
         <div class="save-mark">⛏</div>

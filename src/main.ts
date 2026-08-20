@@ -285,6 +285,13 @@ muteButton?.addEventListener('click', () => {
   localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
   syncMute()
 })
+
+// the about dialog: reachable from boot (start card) and from MORE, because a
+// made-with-love block nobody can find from the menu fails the house standard
+const aboutDialog = document.querySelector<HTMLDialogElement>('#about-dialog')
+for (const id of ['#about-open', '#about-open2']) {
+  document.querySelector<HTMLButtonElement>(id)?.addEventListener('click', () => aboutDialog?.showModal())
+}
 // a game, not a music app (roy: the playing indicator never went away). the
 // ambient category mixes with the player's own audio and respects the ringer
 // switch, which is how well-behaved ios games sound. the engine also suspends
