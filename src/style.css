@@ -222,3 +222,17 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 .big-button.prestige { width: 100%; margin-bottom: .8rem; font-size: 1rem; padding: .8rem; }
+
+/* the about button on the start card: quiet, under PLAY, not competing with it */
+.about-button {
+  position: static;
+  width: auto;
+  height: auto;
+  min-height: 46px;
+  padding: .6rem 1.4rem;
+  border-radius: 1rem;
+  font-size: .8rem;
+  font-weight: 800;
+  box-shadow: 0 .2rem 0 #3d3230;
+}
+#about-dialog .about { margin: .4rem 0; }
