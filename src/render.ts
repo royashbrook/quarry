@@ -42,6 +42,66 @@ export class Renderer {
   /** css px of ui docked at the screen bottom (the nav); hud stays above it */
   bottomInset = 0
 
+  /** the HUD is shell CHROME, not world art, so it paints from the shell's theme
+   *  tokens like the rest of the chrome. resolved from the document (cached, and
+   *  refreshed by refreshTokens() when the theme changes) so a canvas-drawn HUD still
+   *  reskins with a theme swap instead of staying literal. */
+  private tokens = Renderer.readTokens()
+
+  static readTokens(): { raised: string; ink: string; inkDim: string; accent: string; onAccent: string; warn: string; font: string; radius: number } {
+    const fallback = { raised: '#f4ebdd', ink: '#3d3230', inkDim: '#6d5f58', accent: '#ffc94d', onAccent: '#3d3230', warn: '#a04848', font: FONT, radius: 16 }
+    if (typeof document === 'undefined') return fallback
+    const cs = getComputedStyle(document.documentElement)
+    const read = (name: string, or: string): string => cs.getPropertyValue(name).trim() || or
+    return {
+      raised: read('--surface-raised', fallback.raised),
+      ink: read('--ink', fallback.ink),
+      inkDim: read('--ink-dim', fallback.inkDim),
+      accent: read('--accent', fallback.accent),
+      onAccent: read('--ink-on-accent', fallback.onAccent),
+      warn: read('--warn', fallback.warn),
+      font: read('--font-ui', fallback.font),
+      radius: Renderer.toPx(read('--radius', '1rem')),
+    }
+  }
+
+  /** resolve a css length token to px. the first version assumed every value was
+   *  rem-like and multiplied by 16, so a px or calc() token would misresolve. this
+   *  asks the document what the value actually computes to. */
+  static toPx(value: string): number {
+    if (typeof document === 'undefined') return 16
+    const px = Number.parseFloat(value)
+    if (value.endsWith('px')) return Number.isFinite(px) ? px : 16
+    if (value.endsWith('rem')) {
+      const rootPx = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+      return (Number.isFinite(px) ? px : 1) * rootPx
+    }
+    // anything else (calc, em, unitless): measure it for real
+    const probe = document.createElement('div')
+    probe.style.cssText = `position:absolute;visibility:hidden;width:${value}`
+    document.body.appendChild(probe)
+    const measured = probe.getBoundingClientRect().width
+    probe.remove()
+    return Number.isFinite(measured) ? measured : 16
+  }
+
+  /** call after a theme swap so the canvas HUD repaints in the new palette.
+   *  Game.svelte watches data-theme on the root and calls this. */
+  refreshTokens(): void {
+    this.tokens = Renderer.readTokens()
+  }
+
+  /** a token colour at an alpha. the HUD's cards are the ink token at 75-86%, which
+   *  a hard-coded rgba() could not follow when the theme changed. */
+  private alpha(color: string, a: number): string {
+    const hex = color.trim()
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex)
+    if (!m) return hex
+    const full = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1]
+    const n = Number.parseInt(full, 16)
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
+  }
+
   constructor(readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('canvas unavailable')
@@ -577,17 +637,17 @@ export class Renderer {
     const ctx = this.context
     const pad = 14
     // coins pill
-    ctx.fillStyle = 'rgba(244,235,221,.94)'
+    ctx.fillStyle = this.tokens.raised
     cssRound(ctx, pad, pad, 132, 40, 20)
-    ctx.strokeStyle = PALETTE.ink; ctx.lineWidth = 2.5
+    ctx.strokeStyle = this.tokens.ink; ctx.lineWidth = 2.5
     ctx.beginPath(); ctx.roundRect(pad, pad, 132, 40, 20); ctx.stroke()
     coinCss(ctx, pad + 22, pad + 20, 12)
-    this.text(String(state.save.coins), pad + 82, pad + 26, 18, PALETTE.ink, true)
+    this.text(String(state.save.coins), pad + 82, pad + 26, 18, this.tokens.ink, true)
     // pack meter
     const full = state.stack.length >= capacity(state)
-    ctx.fillStyle = 'rgba(244,235,221,.94)'
+    ctx.fillStyle = this.tokens.raised
     cssRound(ctx, pad, pad + 48, 132, 32, 16)
-    this.text(`⛏ ${state.stack.length}/${capacity(state)}${full ? ' FULL' : ''}`, pad + 66, pad + 69, 14, full ? '#A04848' : PALETTE.ink, true)
+    this.text(`⛏ ${state.stack.length}/${capacity(state)}${full ? ' FULL' : ''}`, pad + 66, pad + 69, 14, full ? this.tokens.warn : this.tokens.ink, true)
 
     // contract card: the goal, top-center, always readable
     const contract = state.save.contract
@@ -595,40 +655,40 @@ export class Renderer {
       const width = Math.min(250, view.cssWidth - 300)
       const cx = view.cssWidth / 2 + 30
       if (width > 150) {
-        ctx.fillStyle = 'rgba(61,50,48,.86)'
-        cssRound(ctx, cx - width / 2, pad, width, 62, 14)
-        this.text(`DELIVER ${contract.need} ${ORE_LABEL[contract.ore]}`, cx, pad + 20, 14, '#FFF', true)
-        ctx.fillStyle = 'rgba(255,255,255,.25)'
+        ctx.fillStyle = this.alpha(this.tokens.ink,.86)
+        cssRound(ctx, cx - width / 2, pad, width, 62, this.tokens.radius * .875)
+        this.text(`DELIVER ${contract.need} ${ORE_LABEL[contract.ore]}`, cx, pad + 20, 14, this.tokens.raised, true)
+        ctx.fillStyle = this.alpha(this.tokens.raised,.25)
         cssRound(ctx, cx - width / 2 + 12, pad + 30, width - 24, 10, 5)
         ctx.fillStyle = PALETTE.ore[contract.ore]
         const fill = Math.min(1, contract.done / contract.need)
         if (fill > 0) cssRound(ctx, cx - width / 2 + 12, pad + 30, (width - 24) * fill, 10, 5)
-        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 13, '#FFD45E', true)
+        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 13, this.tokens.accent, true)
       } else {
         // very narrow: compact one-line card below the coins
-        ctx.fillStyle = 'rgba(61,50,48,.86)'
-        cssRound(ctx, pad, pad + 88, 210, 30, 12)
-        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, '#FFD45E', true)
+        ctx.fillStyle = this.alpha(this.tokens.ink,.86)
+        cssRound(ctx, pad, pad + 88, 210, 30, this.tokens.radius * .75)
+        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, this.tokens.accent, true)
       }
     }
     // depth status lives in the top-left column with the other always-on hud:
     // the bottom strip belongs to conditional pills (coach, sound) and the nav
     const contractNarrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - 300) <= 150
     const depthY = contractNarrow ? pad + 132 : pad + 100
-    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, depthY, 13, 'rgba(61,50,48,.75)', true)
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, depthY, 13, this.alpha(this.tokens.ink,.75), true)
     // the first-minute coach: two lessons for a fresh save, advanced by the
     // real actions, drawn in the same hud language as everything else
     if (this.coachStep) {
-      ctx.fillStyle = 'rgba(61,50,48,.85)'
+      ctx.fillStyle = this.alpha(this.tokens.ink,.85)
       cssRound(ctx, view.cssWidth / 2 - 110, view.cssHeight - this.bottomInset - 96, 220, 34, 17)
-      this.text(this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE' : 'WALK UP TO A ROCK ⛏', view.cssWidth / 2, view.cssHeight - this.bottomInset - 73, 14, '#FFD45E')
+      this.text(this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE' : 'WALK UP TO A ROCK ⛏', view.cssWidth / 2, view.cssHeight - this.bottomInset - 73, 14, this.tokens.accent)
     }
     // sound status, only when something is off: muted or never woken
     const soundState = this.audioState()
     if (soundState !== 'running') {
-      ctx.fillStyle = 'rgba(61,50,48,.75)'
+      ctx.fillStyle = this.alpha(this.tokens.ink,.75)
       cssRound(ctx, view.cssWidth / 2 - 92, view.cssHeight - this.bottomInset - 44, 184, 30, 15)
-      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 13, '#FFF')
+      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 13, this.tokens.raised)
     }
   }
 
@@ -665,11 +725,11 @@ export class Renderer {
   private text(value: string, x: number, y: number, size: number, color: string, stroke = false): void {
     const ctx = this.context
     const px = Math.max(13, size)
-    ctx.font = `800 ${px}px ${FONT}`
+    ctx.font = `800 ${px}px ${this.tokens.font}`
     ctx.textAlign = 'center'
     if (stroke) {
       ctx.lineWidth = px / 5
-      ctx.strokeStyle = 'rgba(61,50,48,.35)'
+      ctx.strokeStyle = this.alpha(this.tokens.ink, .35)
       ctx.strokeText(value, x, y)
     }
     ctx.fillStyle = color

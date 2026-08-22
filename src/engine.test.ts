@@ -302,7 +302,7 @@ describe('ore chute (#7)', () => {
     expect(game.save.coins).toBe(4 * Math.floor(8 * CHUTE_RATE)) // gold 8 -> 6 each
   })
 
-  it('credits the contract on arrival: gathered is gathered (roy, #16)', () => {
+  it('credits the contract on arrival: gathered is gathered (#16)', () => {
     const game = createGame()
     game.save.contract = { ore: 'stone', need: 3, done: 0, reward: 6 }
     game.stack = ['stone', 'stone', 'stone']
@@ -490,14 +490,14 @@ describe('the living shop (#14)', () => {
   })
 })
 
-describe('contract variety (#roy: stuck on copper)', () => {
+describe('contract variety (playtest: stuck on copper)', () => {
   it('visits every ore in the pool instead of parking on one', () => {
     const seen = new Set<string>()
     for (let n = 0; n < 10; n++) seen.add(nextContract(n, 1).ore)
     expect(seen.size).toBeGreaterThanOrEqual(4) // old stride served copper 10/10
   })
 
-  it('never asks for ore the current gates cannot reach (roy hit a crystal ask in a sealed mine)', () => {
+  it('never asks for ore the current gates cannot reach (hit a crystal ask in a sealed mine)', () => {
     for (let n = 0; n < 20; n++) {
       const fresh = nextContract(n, 0, 1) // fresh mine 2: only zone 1 open
       expect(['stone', 'coal']).toContain(fresh.ore)
@@ -551,7 +551,7 @@ describe('prestige (#6)', () => {
   })
 })
 
-describe('release gate (ludo cold review)', () => {
+describe('release gate (cold review)', () => {
   it('travel rolls the contract into the fresh mine, never stranding an ask', () => {
     const game = createGame()
     game.save.mines[0].gates = 2

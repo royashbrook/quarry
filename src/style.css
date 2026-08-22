@@ -1,7 +1,33 @@
 :root {
-  color: #3d3230;
-  background: #8fcb6b;
-  font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  /* the house SHELL THEME TOKENS (kidgames docs/shell-theme-tokens.md): structure is
+     fixed, look is a swappable layer. shell chrome reads these and nothing else, so a
+     theme repaints quarry without touching a single class name or element.
+     this is the SHELL layer. the canvas WORLD art (rocks, chips, sparks) is the
+     game-art layer and stays in render.ts. */
+  --surface: #8fcb6b;
+  --surface-raised: #f4ebdd;
+  --surface-sunk: #6fae4f;
+  --ink: #3d3230;
+  --ink-dim: #6d5f58;
+  --ink-on-accent: #3d3230;
+  --accent: #ffc94d;
+  --accent-dim: #e0ab2e;
+  --line: #3d3230;
+  --warn: #a04848;
+  --mark-heart: #e0746a;   /* the signature red, a token so no rule holds a literal */
+  --font-mono: ui-monospace, monospace;
+
+  /* type + shape are tokens too: the contract's set is not colours-only, and a theme
+     that cannot change the font or the corner radius is not a full skin */
+  --font-ui: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-display: var(--font-ui);
+  --radius: 1rem;
+  --shadow: 0 .3rem 0 var(--line);
+  --shadow-pressed: 0 .1rem 0 var(--line);
+
+  color: var(--ink);
+  background: var(--surface);
+  font-family: var(--font-ui);
   font-synthesis: none;
   touch-action: none;
 }
@@ -16,7 +42,7 @@ html, body, main {
 }
 
 body {
-  background: #8fcb6b;
+  background: var(--surface);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -30,8 +56,8 @@ canvas {
 
 button, a {
   border: 0;
-  color: #3d3230;
-  background: #f4ebdd;
+  color: var(--ink);
+  background: var(--surface-raised);
   font: inherit;
   text-decoration: none;
 }
@@ -42,25 +68,26 @@ button, a {
   right: max(1rem, env(safe-area-inset-right));
   width: 3rem;
   height: 3rem;
-  border: .2rem solid #3d3230;
+  border: .2rem solid var(--line);
   border-radius: 50%;
-  box-shadow: 0 .3rem 0 #3d3230;
+  box-shadow: var(--shadow);
   cursor: pointer;
 }
 
-.round-button:active { transform: translateY(.2rem); box-shadow: 0 .1rem 0 #3d3230; }
+.round-button:active { transform: translateY(.2rem); box-shadow: var(--shadow-pressed); }
 
 .mute-button { top: max(4.6rem, calc(env(safe-area-inset-top) + 3.6rem)); font-size: 1rem; }
 
 /* "new version" toast: a bouncing refresh pill, tap = reload */
 .update-toast {
+  color: var(--ink-on-accent);
   top: auto;
   right: auto;
   bottom: max(1.2rem, env(safe-area-inset-bottom));
   left: 50%;
   translate: -50% 0;
   font-size: 1.4rem;
-  background: #ffd45e;
+  background: var(--accent);
   animation: toast-bob 1.6s ease-in-out infinite;
 }
 .update-toast:active { transform: translateY(.2rem); }
@@ -74,21 +101,21 @@ button, a {
 
 dialog {
   width: min(22rem, calc(100vw - 2rem));
-  border: .25rem solid #3d3230;
-  border-radius: 2rem;
+  border: .25rem solid var(--line);
+  border-radius: calc(var(--radius) * 2);
   padding: 1.2rem;
-  color: #3d3230;
-  background: #f4ebdd;
-  box-shadow: 0 1rem 0 rgb(61 50 48 / .2);
+  color: var(--ink);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
   text-align: center;
 }
 
-dialog::backdrop { background: rgb(61 50 48 / .45); backdrop-filter: blur(.25rem); }
+dialog::backdrop { background: rgb(from var(--line) r g b / .45); backdrop-filter: blur(.25rem); }
 dialog form { position: absolute; right: .7rem; top: .5rem; }
 .close { background: transparent; font-size: 2rem; cursor: pointer; }
-.save-mark { font-size: 2rem; color: #e4863b; }
-#save-qr { display: block; width: min(17rem, 100%); margin: .4rem auto 1rem; border-radius: 1rem; }
-#rescue-link { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; margin: auto; border: .2rem solid #3d3230; border-radius: 50%; font-size: 1.6rem; }
+.save-mark { font-size: 2rem; color: var(--accent-dim); }
+#save-qr { display: block; width: min(17rem, 100%); margin: .4rem auto 1rem; border-radius: var(--radius); }
+#rescue-link { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; margin: auto; border: .2rem solid var(--line); border-radius: 50%; font-size: 1.6rem; }
 /* total reset: small, tucked in the corner of the save card, two taps to fire */
 .danger {
   position: absolute;
@@ -96,14 +123,14 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   bottom: .5rem;
   width: 2.4rem;
   height: 2.4rem;
-  border: .15rem solid #a04848;
+  border: .15rem solid var(--warn);
   border-radius: 50%;
   background: transparent;
   font-size: 1rem;
   cursor: pointer;
   opacity: .7;
 }
-.danger[data-armed] { background: #a04848; opacity: 1; }
+.danger[data-armed] { background: var(--warn); opacity: 1; }
 
 /* ===== bottom navigation + sheets (#17), the craftrush pattern ===== */
 #bottom-nav {
@@ -113,24 +140,24 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   display: flex;
   gap: .4rem;
   padding: .5rem .6rem calc(.5rem + env(safe-area-inset-bottom));
-  background: rgb(61 50 48 / .92);
+  background: rgb(from var(--line) r g b / .92);
   z-index: 24; /* above sheets: tabs must switch sheets while one is open */
 }
 #bottom-nav button {
   flex: 1;
   padding: .7rem 0;
-  border-radius: 1rem;
-  background: #f4ebdd;
-  border: .15rem solid #3d3230;
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  border: .15rem solid var(--line);
   font-weight: 800;
   font-size: .85rem;
   cursor: pointer;
 }
-#bottom-nav button[data-active] { background: #ffd45e; }
+#bottom-nav button[data-active] { background: var(--accent); color: var(--ink-on-accent); }
 
 #sheet-backdrop {
   position: fixed; inset: 0;
-  background: rgb(61 50 48 / .45);
+  background: rgb(from var(--line) r g b / .45);
   z-index: 21;
 }
 .sheet {
@@ -138,9 +165,9 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   left: 0; right: 0; bottom: 0;
   max-height: 62dvh;
   overflow-y: auto;
-  background: #f4ebdd;
-  border-radius: 1.6rem 1.6rem 0 0;
-  border-top: .25rem solid #3d3230;
+  background: var(--surface-raised);
+  border-radius: calc(var(--radius) * 1.6) calc(var(--radius) * 1.6) 0 0;
+  border-top: .25rem solid var(--line);
   padding: 1rem 1rem calc(4.6rem + env(safe-area-inset-bottom));
   z-index: 22;
 }
@@ -151,40 +178,41 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   align-items: center;
   gap: .7rem;
   padding: .55rem .6rem;
-  border: .15rem solid #3d3230;
-  border-radius: 1rem;
+  border: .15rem solid var(--line);
+  border-radius: var(--radius);
   margin-bottom: .5rem;
-  background: #fff;
+  background: var(--surface-raised);
 }
 .shop-row .grow { flex: 1; }
 .shop-row .name { font-weight: 800; font-size: .95rem; }
-.shop-row .desc { font-size: .78rem; color: #8a7a70; }
+.shop-row .desc { font-size: .78rem; color: var(--ink-dim); }
 .shop-row button {
   min-width: 5.6rem;
   padding: .55rem .6rem;
-  border-radius: .8rem;
-  border: .15rem solid #3d3230;
-  background: #ffd45e;
+  border-radius: calc(var(--radius) * .8);
+  border: .15rem solid var(--line);
+  background: var(--accent);
+  color: var(--ink-on-accent);
   font-weight: 800;
   cursor: pointer;
 }
-.shop-row button:disabled { background: #ddd5c8; color: #8a7a70; cursor: default; }
+.shop-row button:disabled { background: var(--surface-sunk); color: var(--ink-dim); cursor: default; }
 
 .stats-row { display: grid; grid-template-columns: 1fr auto; gap: .3rem .8rem; font-size: .95rem; }
-.stats-row dt { color: #8a7a70; }
+.stats-row dt { color: var(--ink-dim); }
 .stats-row dd { margin: 0; font-weight: 800; text-align: right; }
 
 .settings-row { display: grid; gap: .6rem; }
 .settings-row button {
   padding: .8rem;
-  border-radius: 1rem;
-  border: .15rem solid #3d3230;
-  background: #fff;
+  border-radius: var(--radius);
+  border: .15rem solid var(--line);
+  background: var(--surface-raised);
   font-weight: 800;
   cursor: pointer;
 }
-.danger-row { border-color: #a04848 !important; color: #a04848; }
-.danger-row[data-armed] { background: #a04848 !important; color: #fff; }
+.danger-row { border-color: var(--warn) !important; color: var(--warn); }
+.danger-row[data-armed] { background: var(--warn) !important; color: var(--surface-raised); }
 
 /* start card */
 .sheet-card.start {
@@ -194,34 +222,39 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   place-content: center;
   justify-items: center;
   gap: .6rem;
-  background: rgb(143 203 107 / .96);
+  background: var(--surface-raised);
   z-index: 30;
   text-align: center;
 }
-.start h1 { font-size: 3rem; letter-spacing: .06em; color: #3d3230; margin: 0; }
-.start img { border-radius: 1.4rem; }
-.start p { color: #3d3230; font-weight: 700; margin: 0; }
+.start h1 { font-family: var(--font-display); font-size: 3rem; letter-spacing: .06em; color: var(--ink); margin: 0; }
+.start img { border-radius: calc(var(--radius) * 1.4); }
+.start p { color: var(--ink); font-weight: 700; margin: 0; }
 .big-button {
   margin-top: .6rem;
   padding: 1rem 3.4rem;
   font-size: 1.4rem;
   font-weight: 800;
-  border-radius: 1.4rem;
-  border: .25rem solid #3d3230;
-  background: #ffd45e;
-  box-shadow: 0 .45rem 0 #3d3230;
+  border-radius: calc(var(--radius) * 1.4);
+  border: .25rem solid var(--line);
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  box-shadow: var(--shadow);
   cursor: pointer;
 }
-.big-button:active { transform: translateY(.3rem); box-shadow: 0 .15rem 0 #3d3230; }
+.big-button:active { transform: translateY(.3rem); box-shadow: var(--shadow-pressed); }
 
 /* [hidden] must always win, even over our own display rules */
 #bottom-nav[hidden], .sheet[hidden], .sheet-card[hidden], #sheet-backdrop[hidden] { display: none !important; }
 
-.about { text-align: center; font-size: .8rem; color: #8a7a70; margin: 1rem 0 0; }
-.about a { color: #a04848; font-weight: 700; }
+.about { text-align: center; font-size: .8rem; color: var(--ink-dim); margin: 1rem 0 0; }
+.about a { color: var(--warn); font-weight: 700; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 .big-button.prestige { width: 100%; margin-bottom: .8rem; font-size: 1rem; padding: .8rem; }
+/* the armed state has to be VISIBLE: that is the whole point of a two-tap destructive
+   control. i added data-armed to the prestige button with no rule behind it, so the
+   attribute was inert while the reset button (.danger-row) styled correctly. */
+.big-button.prestige[data-armed] { background: var(--warn); color: var(--surface-raised); }
 
 /* the about button on the start card: quiet, under PLAY, not competing with it */
 .about-button {
@@ -230,23 +263,65 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   height: auto;
   min-height: 46px;
   padding: .6rem 1.4rem;
-  border-radius: 1rem;
+  border-radius: var(--radius);
   font-size: .8rem;
   font-weight: 800;
-  box-shadow: 0 .2rem 0 #3d3230;
+  box-shadow: var(--shadow);
 }
 #about-dialog .about { margin: .4rem 0; }
 
 /* roy's maker's mark, the house colophon (canonical: blame-web MakerMark.svelte) */
-.maker-mark { font-family: ui-monospace, monospace; font-size: .78rem; color: #8b8f99; }
-.maker-mark a { color: #3d3230; text-decoration: underline; font-weight: 700; }
-.maker-mark a.mark-sponsor { color: #d9a441; }
-.mark-heart { width: .85em; height: .85em; fill: #e0746a; vertical-align: -.1em; }
+.maker-mark { font-family: var(--font-mono); font-size: .78rem; color: var(--ink-dim); }
+.maker-mark a { color: var(--ink); text-decoration: underline; font-weight: 700; }
+/* the sponsor link is maker-mark TEXT: it takes the mark ink like its siblings.
+   colouring it --accent-dim made it unreadable (1.77 / 1.94:1) AND stole a token whose
+   contract role is hover/pressed accent. */
+.maker-mark a.mark-sponsor { color: var(--ink); }
+.mark-heart { width: .85em; height: .85em; fill: var(--mark-heart); vertical-align: -.1em; }
 .mark-dot { opacity: .45; }
 
 /* the about dialog reads top to bottom: title, what the game is, the ethos as
    the section footer, then the maker's mark under a hairline as the colophon */
 #about-title { margin: .2rem 0 .6rem; }
 .about-body { margin: 0 0 .8rem; font-size: .95rem; line-height: 1.5; }
-.about-ethos { margin: 0 0 1rem; color: #8a7a70; font-size: .82rem; font-weight: 700; line-height: 1.45; }
-.about-dialog .maker-mark, #about-dialog .maker-mark { margin: 0; padding-top: .8rem; border-top: .12rem solid rgb(61 50 48 / .15); }
+.about-ethos { margin: 0 0 1rem; color: var(--ink-dim); font-size: .82rem; font-weight: 700; line-height: 1.45; }
+.about-dialog .maker-mark, #about-dialog .maker-mark { margin: 0; padding-top: .8rem; border-top: .12rem solid rgb(from var(--line) r g b / .15); }
+
+/* the mark links are real tap targets on a phone, not 14px text: the house floor
+   is 44px on BOTH axes (the pilot scar was 31x23 links that passed a visual check) */
+.maker-mark a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+.maker-mark { line-height: 2.6; }
+
+/* a SECOND theme, which is what makes "swappable" a claim we can test rather than
+   assert: same DOM, same classes, only token values move. the canvas HUD reads the
+   same tokens via Renderer.readTokens(), so the chrome repaints with the page. */
+:root[data-theme="dusk"] {
+  --surface: #2b3550;
+  --surface-raised: #e8e4dc;
+  --surface-sunk: #1f2740;
+  --ink: #22283a;
+  --ink-dim: #5d6478;
+  --ink-on-accent: #22283a;
+  --accent: #7fd4e8;
+  --accent-dim: #4fb2c9;
+  --line: #22283a;
+  /* the signature, identical in every theme by contract: a theme repainting the
+     maker mark is not a reskin */
+  --mark-heart: #e0746a;
+  /* quarry dusk keeps a LIGHT raised surface, so warn must be a DARK red here. an
+     earlier pass set #E08A8A by copying a dark-card palette from another game: 2.03:1,
+     WORSE than the fallback it replaced. */
+  --warn: #8f3a3a;
+  --font-mono: ui-monospace, monospace;
+  --shadow: 0 .3rem 0 var(--line);
+  --shadow-pressed: 0 .1rem 0 var(--line);
+  --font-ui: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-display: var(--font-ui);
+  --radius: 1rem;
+}

@@ -1,0 +1,20 @@
+:root { --surface:#fff; --ink:#111; --accent:#fa0; --ink-on-accent:#111; --line:#111;
+  --font-ui:system-ui; --font-display:var(--font-ui); --font-mono:ui-monospace;
+  --radius:1rem; --shadow:0 .3rem 0 var(--line); --shadow-pressed:0 .1rem 0 var(--line);
+  --mark-heart:#e0746a; --surface-raised:#fff; --surface-sunk:#eee; --ink-dim:#666;
+  --accent-dim:#c80; --warn:#a04848; }
+[data-theme="dusk"] { --surface:#222; --ink:#eee; --accent:#7fd4e8; --ink-on-accent:#222;
+  --line:#eee; --font-ui:system-ui; --font-display:var(--font-ui); --font-mono:ui-monospace;
+  --radius:1rem; --shadow:0 .3rem 0 var(--line); --shadow-pressed:0 .1rem 0 var(--line);
+  --mark-heart:#e0746a; --surface-raised:#333; --surface-sunk:#111; --ink-dim:#aaa;
+  --accent-dim:#4fb2c9; --warn:#a04848; }
+.card { background:var(--surface-raised); color:var(--ink); border-radius:var(--radius); box-shadow:var(--shadow); }
+.b { background:var(--accent); color:var(--ink-on-accent); box-shadow:var(--shadow-pressed); }
+.t { font-family:var(--font-ui); }
+.d { font-family:var(--font-display); }
+.m { font-family:var(--font-mono); color:var(--ink-dim); }
+.s { background:var(--surface); border-color:var(--line); }
+.k { background:var(--surface-sunk); color:var(--accent-dim); }
+.w { color:var(--warn); }
+.h { fill:var(--mark-heart); }
+.x { background: var(--accent); color: var(--ink); }

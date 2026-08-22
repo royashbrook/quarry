@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test'
+import { ready } from './ready'
 
 // the camera pans DOWN the dig and input maps through the same pan, so a
 // pointer press on a visible spot lands on that world point at any depth.
 test('camera follows the dig and pointer mapping tracks the pan', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/')
+  await ready(page)
+  await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
 
   // deep in zone 1 (still above the first gate): the camera must follow
@@ -36,7 +39,9 @@ test('camera follows the dig and pointer mapping tracks the pan', async ({ page 
 // 13+ css px by construction; this asserts the hud objects are actually there
 test('phone portrait renders the hud readable and the world fills the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/')
+  await ready(page)
+  await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   const checks = await page.evaluate(() => {
     const canvas = document.querySelector('canvas')!
