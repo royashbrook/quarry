@@ -18,6 +18,7 @@ declare global {
       pause: (on: boolean) => void
       setTime: (seconds: number) => void
       audioState: () => string
+      hud: () => Renderer['boxes']
     }
   }
 }
@@ -63,7 +64,8 @@ function frame(now: number): void {
   }
   if (renderer.coachStep === 'move' && coachOrigin
     && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
-  if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = null
+  if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = 'sell'
+  if (renderer.coachStep === 'sell' && state.save.lifetime > 0) renderer.coachStep = null
   state.pings.splice(0).forEach(bleep) // drain feel events even while paused
   if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
     idleSuspended = true
@@ -113,8 +115,9 @@ if (startStats) {
     ? 'a tiny mining game'
     : `mine ${save.mine + 1} · ${save.coins} · ${save.lifetime} lifetime`
 }
-// a fresh save gets two coached beats: move, then mine. each advances on the
-// real action and the whole thing never appears again once lifetime coins exist.
+// a fresh save gets three coached beats: move, mine, then sell. each advances
+// on the real action and the whole thing never appears again once lifetime
+// coins exist.
 let coachOrigin: Point | null = null
 function measureNav(): void {
   renderer.bottomInset = bottomNav && !bottomNav.hasAttribute('hidden') ? bottomNav.offsetHeight : 0
@@ -379,4 +382,5 @@ if (import.meta.env.DEV || import.meta.env.MODE === 'test') window.__quarry = {
   pause: on => { paused = on },
   setTime: seconds => { state.time = seconds },
   audioState: () => (muted ? 'muted' : idleSuspended ? 'idle' : audio?.state ?? 'none'),
+  hud: () => structuredClone(renderer.boxes),
 }

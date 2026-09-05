@@ -6,6 +6,8 @@ import { BUY_CHARGE_SECONDS, capacity, CHUTES, currentMine, DEPOT, GATES, HELPER
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
+type Box = { x: number; y: number; w: number; h: number }
+type CoachStep = 'move' | 'mine' | 'sell' | null
 
 export const PALETTE = {
   sky: '#BDE3F0',
@@ -37,10 +39,13 @@ export class Renderer {
   reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
   /** set by the shell; lets the hud show the truth about sound on screen */
   audioState: () => string = () => 'none'
-  /** set by the shell; 'move' | 'mine' | null drives the first-minute coach */
-  coachStep: 'move' | 'mine' | null = null
+  /** set by the shell; move, mine, sell, or null drives the first-minute coach */
+  coachStep: CoachStep = null
   /** css px of ui docked at the screen bottom (the nav); hud stays above it */
   bottomInset = 0
+  /** last-frame screen boxes of the hud column, the SELL sign, and the coach:
+   *  what the sign clamps against, and what the browser tests read back */
+  boxes: { column: Box; sell: Box | null; coach: { text: string; box: Box } | null } = { column: { x: 0, y: 0, w: 0, h: 0 }, sell: null, coach: null }
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d')
@@ -481,8 +486,18 @@ export class Renderer {
     const project = (p: Point) => worldToClient(view, { x: p.x, y: p.y - cameraY })
     const onScreen = (c: Point) => c.y > -60 && c.y < view.cssHeight + 60
 
+    // the SELL sign clamps below the hud column the way the monument banner
+    // does, and stays while any of the hut (ring included) shows under it:
+    // the first time a kid needs the word is when the camera has panned
+    const column = this.hudColumn(state, view)
     const depot = project({ x: DEPOT.x, y: DEPOT.y - 4 })
-    if (onScreen(depot)) this.text('SELL', depot.x, depot.y, 16, '#FFF', true)
+    depot.y = Math.max(column.y + column.h + 18, depot.y)
+    this.boxes.sell = null
+    if (depot.y < project({ x: DEPOT.x, y: DEPOT.y + 44 }).y) {
+      this.text('SELL', depot.x, depot.y, 16, '#FFF', true)
+      const w = this.context.measureText('SELL').width
+      this.boxes.sell = { x: depot.x - w / 2, y: depot.y - 14, w, h: 18 }
+    }
 
     const icons: Record<UpgradeId, string> = { pick: '⛏', pack: '🎒', boots: '👢', swing: '💪', reach: '🧲', cart: '🛒' }
     for (const id of Object.keys(SHOP) as UpgradeId[]) {
@@ -573,9 +588,21 @@ export class Renderer {
     }
   }
 
+  /** the always-on top-left column: coins, pack, the narrow contract line
+   *  when there is no room top-center, then the depth pill. world labels
+   *  clamp against this box so nothing a kid must read hides under it */
+  private hudColumn(state: GameState, view: Viewport): Box & { narrow: boolean } {
+    const pad = 14
+    const narrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - 300) <= 150
+    const depthTop = pad + (narrow ? 126 : 88)
+    return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad, narrow }
+  }
+
   private drawHud(state: GameState, view: Viewport): void {
     const ctx = this.context
     const pad = 14
+    const column = this.hudColumn(state, view)
+    this.boxes.column = column
     // coins pill
     ctx.fillStyle = 'rgba(244,235,221,.94)'
     cssRound(ctx, pad, pad, 132, 40, 20)
@@ -611,17 +638,29 @@ export class Renderer {
         this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, '#FFD45E', true)
       }
     }
-    // depth status lives in the top-left column with the other always-on hud:
-    // the bottom strip belongs to conditional pills (coach, sound) and the nav
-    const contractNarrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - 300) <= 150
-    const depthY = contractNarrow ? pad + 132 : pad + 100
-    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, depthY, 13, 'rgba(61,50,48,.75)', true)
-    // the first-minute coach: two lessons for a fresh save, advanced by the
-    // real actions, drawn in the same hud language as everything else
+    // depth status lives in the top-left column with the other always-on hud,
+    // on its own paper pill so it never prints bare across whatever the world
+    // has scrolled under the column (the hut, after the first walk). the
+    // bottom strip belongs to conditional pills (coach, sound) and the nav
+    const depthTop = column.y + column.h - 26
+    ctx.fillStyle = 'rgba(244,235,221,.94)'
+    cssRound(ctx, pad, depthTop, 132, 26, 13)
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 66, depthTop + 18, 13, PALETTE.ink, true)
+    // the first-minute coach: three lessons for a fresh save, advanced by the
+    // real actions, drawn in the same hud language as everything else. the
+    // sell beat points at the hut from wherever the miner stands.
+    this.boxes.coach = null
     if (this.coachStep) {
+      const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗']
+      const toHut = Math.atan2(DEPOT.y - state.player.y, DEPOT.x - state.player.x)
+      const text = this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE'
+        : this.coachStep === 'mine' ? 'WALK UP TO A ROCK ⛏'
+        : `CARRY IT TO SELL ${arrows[Math.round(toHut / (Math.PI / 4)) & 7]}`
+      const box = { x: view.cssWidth / 2 - 110, y: view.cssHeight - this.bottomInset - 96, w: 220, h: 34 }
       ctx.fillStyle = 'rgba(61,50,48,.85)'
-      cssRound(ctx, view.cssWidth / 2 - 110, view.cssHeight - this.bottomInset - 96, 220, 34, 17)
-      this.text(this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE' : 'WALK UP TO A ROCK ⛏', view.cssWidth / 2, view.cssHeight - this.bottomInset - 73, 14, '#FFD45E')
+      cssRound(ctx, box.x, box.y, box.w, box.h, 17)
+      this.text(text, view.cssWidth / 2, box.y + 23, 14, '#FFD45E')
+      this.boxes.coach = { text, box }
     }
     // sound status, only when something is off: muted or never woken
     const soundState = this.audioState()
