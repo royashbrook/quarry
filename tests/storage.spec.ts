@@ -98,6 +98,8 @@ for (const viewport of [{ width: 430, height: 932 }, { width: 430, height: 740 }
       expect(chip).not.toBeNull()
       const chipBox = { x: chip!.x, y: chip!.y, w: chip!.width, h: chip!.height }
       expect(intersects(chipBox, boxes.sell), `miner at y ${y}: chip ${JSON.stringify(chipBox)} vs sell ${JSON.stringify(boxes.sell)}`).toBe(false)
+      // the reserved slot is the chip's alone: the depth pill stays above it
+      expect(intersects(chipBox, boxes.depth), `miner at y ${y}: chip ${JSON.stringify(chipBox)} vs depth pill ${JSON.stringify(boxes.depth)}`).toBe(false)
     }
     expect(clamps, 'the SELL sign should clamp under the column at some stop').toBeGreaterThan(0)
   })
