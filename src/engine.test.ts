@@ -5,6 +5,17 @@ import {
 } from './engine'
 import { decodeSave, loadSave, storeSave, SAVE_KEY, storage } from './save'
 
+// the accessor remembers a refused key and its memory copy until a store
+// confirms the removal: give it one, then take the fake store back down
+const forget = (key: string): void => {
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { getItem: (): string | null => null, removeItem: (): void => {} },
+  })
+  storage.removeItem(key)
+  delete (globalThis as { localStorage?: unknown }).localStorage
+}
+
 const memory = () => {
   const values = new Map<string, string>()
   return {
@@ -292,8 +303,7 @@ describe('save', () => {
       storeSave(save)
       expect(loadSave().coins).toBe(12)
     } finally {
-      delete (globalThis as { localStorage?: unknown }).localStorage
-      storage.removeItem(SAVE_KEY) // the accessor remembers a refused key; leave none behind
+      forget(SAVE_KEY)
     }
   })
 
@@ -320,8 +330,7 @@ describe('save', () => {
       storeSave(defaultSave())
       expect(storage.hasRefused()).toBe(false)
     } finally {
-      delete (globalThis as { localStorage?: unknown }).localStorage
-      storage.removeItem(SAVE_KEY)
+      forget(SAVE_KEY)
     }
   })
 
@@ -337,7 +346,43 @@ describe('save', () => {
       expect(() => storeSave(save)).not.toThrow()
       expect(loadSave().coins).toBe(9)
     } finally {
-      delete (globalThis as { localStorage?: unknown }).localStorage
+      forget(SAVE_KEY)
+    }
+  })
+
+  // a browser that blocks site data throws on the localStorage getter itself.
+  // the removal and the read after it both throw, and an unreadable store is
+  // no evidence the old durable save is gone: a reload would hand it back
+  it('an unreadable store cannot attest that a reset removed the durable save', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get: () => { throw new DOMException('denied', 'SecurityError') },
+    })
+    try {
+      expect(storage.removeItem(SAVE_KEY)).toBe(false)
+    } finally {
+      forget(SAVE_KEY)
+    }
+  })
+
+  it('a refused removal keeps the session copy and the refused mark; a confirmed one clears both', () => {
+    const full = {
+      getItem: (): string | null => null,
+      setItem: (): void => { throw new DOMException('full', 'QuotaExceededError') },
+      removeItem: (): void => { throw new DOMException('denied', 'SecurityError') },
+    }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: full })
+    try {
+      storeSave({ ...defaultSave(), coins: 21 })
+      expect(storage.removeItem(SAVE_KEY)).toBe(false)
+      expect(loadSave().coins).toBe(21)
+      expect(storage.hasRefused()).toBe(true)
+      full.removeItem = () => {}
+      expect(storage.removeItem(SAVE_KEY)).toBe(true)
+      expect(loadSave()).toEqual(defaultSave())
+      expect(storage.hasRefused()).toBe(false)
+    } finally {
+      forget(SAVE_KEY)
     }
   })
 
