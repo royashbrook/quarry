@@ -154,8 +154,8 @@ export const GATES = [
 
 // rock formations per zone: laid out by hand so each zone reads as a place
 const LAYOUT: [Ore, number, number][] = [
-  ['stone', 120, 480], ['stone', 300, 430], ['stone', 450, 520], ['stone', 180, 640],
-  ['stone', 390, 700], ['coal', 100, 820], ['coal', 460, 880], ['coal', 250, 990],
+  ['stone', 120, 480], ['stone', 300, 430], ['stone', 360, 560], ['stone', 180, 640],
+  ['stone', 390, 700], ['coal', 100, 820], ['coal', 430, 800], ['coal', 250, 990],
   ['coal', 130, SURFACE + ZONE_H + 90], ['coal', 400, SURFACE + ZONE_H + 140],
   ['copper', 250, SURFACE + ZONE_H + 260], ['copper', 100, SURFACE + ZONE_H + 400],
   ['copper', 430, SURFACE + ZONE_H + 430], ['copper', 300, SURFACE + ZONE_H + 560],

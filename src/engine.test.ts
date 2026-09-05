@@ -583,3 +583,24 @@ describe('release gate (ludo cold review)', () => {
     expect(game.save.coins - before).toBe(5 + 9)
   })
 })
+
+describe('layout', () => {
+  it('no rock sits on a pad', () => {
+    const game = createGame()
+    // drawn extents in world units: a full rock spans about 36 either side
+    // and 70 up from its anchor; a pad 48 either side, 20 up, 16 down; the
+    // depot is wider and carries its coins higher
+    const pads = [
+      ...Object.values(SHOP).map(spot => ({ ...spot, hw: 48, up: 20, down: 16 })),
+      { ...HELPER_PAD, hw: 48, up: 20, down: 16 },
+      ...CHUTES.map(spot => ({ ...spot, hw: 48, up: 20, down: 16 })),
+      { ...DEPOT, hw: 80, up: 42, down: 22 },
+    ]
+    for (const rock of game.rocks) {
+      for (const pad of pads) {
+        const clear = rock.x + 36 < pad.x - pad.hw || rock.x - 36 > pad.x + pad.hw || rock.y + 8 < pad.y - pad.up || rock.y - 70 > pad.y + pad.down
+        expect(clear, `${rock.ore} rock at ${rock.x},${rock.y} overlaps the pad at ${pad.x},${pad.y}`).toBe(true)
+      }
+    }
+  })
+})

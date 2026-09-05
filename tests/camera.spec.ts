@@ -33,7 +33,7 @@ test('camera follows the dig and pointer mapping tracks the pan', async ({ page 
 })
 
 // portrait is the design target: at 390x844 every screen-space text draws at
-// 13+ css px by construction; this asserts the hud objects are actually there
+// 14+ css px by construction; this asserts the hud objects are actually there
 test('phone portrait renders the hud readable and the world fills the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/'); await page.click('#play-button')

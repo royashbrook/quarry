@@ -19,6 +19,7 @@ declare global {
       setTime: (seconds: number) => void
       audioState: () => string
       hud: () => Renderer['boxes']
+      render: () => { smallestText: number; contractTitled: boolean }
     }
   }
 }
@@ -281,7 +282,7 @@ const MUTE_KEY = 'quarry_mute'
 const muteButton = document.querySelector<HTMLButtonElement>('#mute-button')
 let muted = localStorage.getItem(MUTE_KEY) === '1'
 let audio: AudioContext | null = null
-const syncMute = () => { if (muteButton) muteButton.textContent = muted ? '🔇' : '🔊' }
+const syncMute = () => { if (muteButton) muteButton.textContent = muted ? '🔇 SOUND OFF' : '🔊 SOUND ON' }
 syncMute()
 muteButton?.addEventListener('click', () => {
   muted = !muted
@@ -295,6 +296,9 @@ const aboutDialog = document.querySelector<HTMLDialogElement>('#about-dialog')
 for (const id of ['#about-open', '#about-open2']) {
   document.querySelector<HTMLButtonElement>(id)?.addEventListener('click', () => aboutDialog?.showModal())
 }
+// the build id, stamped by vite at build time, so a player can say which build they have
+const buildId = document.querySelector<HTMLElement>('#build-id')
+if (buildId) buildId.textContent = `v${__BUILD__}`
 // a game, not a music app (roy: the playing indicator never went away). the
 // ambient category mixes with the player's own audio and respects the ringer
 // switch, which is how well-behaved ios games sound. the engine also suspends
@@ -383,4 +387,5 @@ if (import.meta.env.DEV || import.meta.env.MODE === 'test') window.__quarry = {
   setTime: seconds => { state.time = seconds },
   audioState: () => (muted ? 'muted' : idleSuspended ? 'idle' : audio?.state ?? 'none'),
   hud: () => structuredClone(renderer.boxes),
+  render: () => ({ smallestText: renderer.smallestText, contractTitled: renderer.contractTitled }),
 }
