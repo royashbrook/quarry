@@ -80,7 +80,14 @@ function frame(now: number): void {
     if (saveClock >= 1 && !resetting) {
       saveClock = 0
       storeSave(state.save)
-      if (saveNote) saveNote.hidden = !storage.hasRefused()
+      if (saveNote) {
+        saveNote.hidden = !storage.hasRefused()
+        renderer.noteInset = saveNote.hidden ? 0 : saveNote.offsetHeight + 6
+      }
+    }
+    if (saveNote && !saveNote.hidden) {
+      const column = renderer.boxes.column
+      saveNote.style.top = `${column.y + column.h - renderer.noteInset + 6}px`
     }
   } finally {
     requestAnimationFrame(frame)
@@ -90,7 +97,8 @@ function frame(now: number): void {
 requestAnimationFrame(frame)
 addEventListener('pagehide', () => { if (!resetting) storeSave(state.save) })
 // a refused write used to be invisible: the game played on and the progress
-// died with the tab. the chip stays up while the last write is refused.
+// died with the tab. the chip stays up while the last write is refused, in a
+// slot the hud column reserves for it, so the SELL sign clamps below it
 const saveNote = document.querySelector<HTMLElement>('#save-note')
 
 // the reload is what makes a reset real, and it only makes sense once the

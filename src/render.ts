@@ -43,6 +43,9 @@ export class Renderer {
   coachStep: CoachStep = null
   /** css px of ui docked at the screen bottom (the nav); hud stays above it */
   bottomInset = 0
+  /** css px the shell's status chip takes under the column's pills; the
+   *  column reserves it so world labels clamp below the chip, not under it */
+  noteInset = 0
   /** last-frame screen boxes of the hud column, the SELL sign, and the coach:
    *  what the sign clamps against, and what the browser tests read back */
   boxes: { column: Box; sell: Box | null; coach: { text: string; box: Box } | null } = { column: { x: 0, y: 0, w: 0, h: 0 }, sell: null, coach: null }
@@ -600,7 +603,7 @@ export class Renderer {
     const pad = 14
     const narrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - pad * 3 - 132) < 150
     const depthTop = pad + (narrow ? 126 : 88)
-    return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad, narrow }
+    return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad + this.noteInset, narrow }
   }
 
   private drawHud(state: GameState, view: Viewport): void {
