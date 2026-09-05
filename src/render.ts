@@ -1,6 +1,6 @@
 // quarry's renderer, portrait-first: the world is a vertical dig, the camera
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
-// a 13 css px floor so a phone can actually read it. all art is canvas vectors.
+// a 14 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
 import { BUY_CHARGE_SECONDS, capacity, CHUTES, currentMine, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, mineMultiplier, MONUMENT, MONUMENT_STAGES, ORES, pickDamage, RAIL_X, SHOP, SURFACE, TRAVEL, travelPickNeeded, travelPrice, upgradeMax, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
@@ -46,6 +46,10 @@ export class Renderer {
   /** last-frame screen boxes of the hud column, the SELL sign, and the coach:
    *  what the sign clamps against, and what the browser tests read back */
   boxes: { column: Box; sell: Box | null; coach: { text: string; box: Box } | null } = { column: { x: 0, y: 0, w: 0, h: 0 }, sell: null, coach: null }
+  /** the smallest css px any text drew at in the last frame, and whether the
+   *  contract drew as the titled card: what the browser tests read back */
+  smallestText = Infinity
+  contractTitled = false
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d')
@@ -57,6 +61,7 @@ export class Renderer {
     const ctx = this.context
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    this.smallestText = Infinity
     const k = view.dpr * view.scale
     const amp = this.reducedMotion ? 0.3 : 1
     const shakeX = state.shake > 0 ? Math.sin(state.time * 71) * state.shake * 20 * amp : 0
@@ -507,12 +512,12 @@ export class Renderer {
       const affordable = !maxed && state.save.coins >= price
       const spot = project({ x: SHOP[id].x, y: SHOP[id].y + 2 })
       if (!onScreen(spot)) continue
-      this.text(maxed ? `${icons[id]}${level} MAX` : `${icons[id]}${level} · ${price}`, spot.x, spot.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `${icons[id]}${level} MAX` : `${icons[id]}${level} · ${price}`, spot.x, spot.y, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
     }
 
     for (const spot of CHUTES) {
       const at = project({ x: spot.x, y: spot.y - 34 })
-      if (onScreen(at)) this.text('CHUTE ↑', at.x, at.y, 13, 'rgba(244,235,221,.9)', true)
+      if (onScreen(at)) this.text('CHUTE ↑', at.x, at.y, 14, 'rgba(244,235,221,.9)', true)
     }
 
     const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y + 2 })
@@ -521,7 +526,7 @@ export class Renderer {
       const maxed = mine.helpers >= HELPER_PRICES.length
       const price = maxed ? 0 : HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine)
       const affordable = !maxed && state.save.coins >= price
-      this.text(maxed ? `👷${mine.helpers} MAX` : `👷${mine.helpers} · $${price}`, hire.x, hire.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `👷${mine.helpers} MAX` : `👷${mine.helpers} · $${price}`, hire.x, hire.y, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
     }
 
     // the travel shaft banner: visible once both gates are open in this mine
@@ -536,7 +541,7 @@ export class Renderer {
         ctx.fillStyle = 'rgba(61,50,48,.88)'
         cssRound(ctx, shaft.x - 100, shaft.y - 18, 200, 46, 12)
         if (pickLevel < needPick) {
-          this.text(`NEXT MINE: PICK LV${needPick} NEEDED`, shaft.x, shaft.y + 2, 13, '#F5A9A0', true)
+          this.text(`NEXT MINE: PICK LV${needPick} NEEDED`, shaft.x, shaft.y + 2, 14, '#F5A9A0', true)
         } else {
           this.text(`NEXT MINE  $${price - paid}`, shaft.x, shaft.y - 1, 14, '#FFD45E', true)
           ctx.fillStyle = 'rgba(255,255,255,.25)'
@@ -564,7 +569,7 @@ export class Renderer {
         cssRound(ctx, spot.x - 82, spot.y + 6, 164, 10, 5)
         ctx.fillStyle = PALETTE.coin
         if (fill > 0) cssRound(ctx, spot.x - 82, spot.y + 6, 164 * fill, 10, 5)
-        this.text(`MONUMENT ${state.save.monument + 1}/5  $${remaining}`, spot.x, spot.y, 13, '#FFF', true)
+        this.text(`MONUMENT ${state.save.monument + 1}/5  $${remaining}`, spot.x, spot.y, 14, '#FFF', true)
       }
     }
 
@@ -593,7 +598,7 @@ export class Renderer {
    *  clamp against this box so nothing a kid must read hides under it */
   private hudColumn(state: GameState, view: Viewport): Box & { narrow: boolean } {
     const pad = 14
-    const narrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - 300) <= 150
+    const narrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - pad * 3 - 132) < 150
     const depthTop = pad + (narrow ? 126 : 88)
     return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad, narrow }
   }
@@ -616,12 +621,17 @@ export class Renderer {
     cssRound(ctx, pad, pad + 48, 132, 32, 16)
     this.text(`⛏ ${state.stack.length}/${capacity(state)}${full ? ' FULL' : ''}`, pad + 66, pad + 69, 14, full ? '#A04848' : PALETTE.ink, true)
 
-    // contract card: the goal, top-center, always readable
+    // contract card: the goal, always readable. the titled card with its bar
+    // centers when the screen has room and docks right of the coins pill on
+    // a phone; only a very narrow screen gets the one-line fallback below
     const contract = state.save.contract
+    const contractWidth = Math.min(250, view.cssWidth - pad * 3 - 132)
+    this.contractTitled = Boolean(contract) && !column.narrow
     if (contract) {
-      const width = Math.min(250, view.cssWidth - 300)
-      const cx = view.cssWidth / 2 + 30
-      if (width > 150) {
+      const width = contractWidth
+      const left = Math.max(pad * 2 + 132, Math.min(view.cssWidth / 2 + 30 - width / 2, view.cssWidth - pad - width))
+      const cx = left + width / 2
+      if (this.contractTitled) {
         ctx.fillStyle = 'rgba(61,50,48,.86)'
         cssRound(ctx, cx - width / 2, pad, width, 62, 14)
         this.text(`DELIVER ${contract.need} ${ORE_LABEL[contract.ore]}`, cx, pad + 20, 14, '#FFF', true)
@@ -630,12 +640,12 @@ export class Renderer {
         ctx.fillStyle = PALETTE.ore[contract.ore]
         const fill = Math.min(1, contract.done / contract.need)
         if (fill > 0) cssRound(ctx, cx - width / 2 + 12, pad + 30, (width - 24) * fill, 10, 5)
-        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 13, '#FFD45E', true)
+        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 14, '#FFD45E', true)
       } else {
         // very narrow: compact one-line card below the coins
         ctx.fillStyle = 'rgba(61,50,48,.86)'
         cssRound(ctx, pad, pad + 88, 210, 30, 12)
-        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, '#FFD45E', true)
+        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 14, '#FFD45E', true)
       }
     }
     // depth status lives in the top-left column with the other always-on hud,
@@ -645,7 +655,7 @@ export class Renderer {
     const depthTop = column.y + column.h - 26
     ctx.fillStyle = 'rgba(244,235,221,.94)'
     cssRound(ctx, pad, depthTop, 132, 26, 13)
-    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 66, depthTop + 18, 13, PALETTE.ink, true)
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 66, depthTop + 18, 14, PALETTE.ink, true)
     // the first-minute coach: three lessons for a fresh save, advanced by the
     // real actions, drawn in the same hud language as everything else. the
     // sell beat points at the hut from wherever the miner stands.
@@ -667,7 +677,7 @@ export class Renderer {
     if (soundState !== 'running') {
       ctx.fillStyle = 'rgba(61,50,48,.75)'
       cssRound(ctx, view.cssWidth / 2 - 92, view.cssHeight - this.bottomInset - 44, 184, 30, 15)
-      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 13, '#FFF')
+      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 14, '#FFF')
     }
   }
 
@@ -700,10 +710,11 @@ export class Renderer {
     ctx.restore()
   }
 
-  /** css-px text with a floor of 13: nothing on screen is ever smaller */
+  /** css-px text with a floor of 14: nothing on screen is ever smaller */
   private text(value: string, x: number, y: number, size: number, color: string, stroke = false): void {
     const ctx = this.context
-    const px = Math.max(13, size)
+    const px = Math.max(14, size)
+    this.smallestText = Math.min(this.smallestText, px)
     ctx.font = `800 ${px}px ${FONT}`
     ctx.textAlign = 'center'
     if (stroke) {

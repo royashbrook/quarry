@@ -194,7 +194,7 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   place-content: center;
   justify-items: center;
   gap: .6rem;
-  background: rgb(143 203 107 / .96);
+  background: #8fcb6b; /* opaque: the hud must not ghost through the one calm screen */
   z-index: 30;
   text-align: center;
 }
@@ -250,3 +250,4 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 .about-body { margin: 0 0 .8rem; font-size: .95rem; line-height: 1.5; }
 .about-ethos { margin: 0 0 1rem; color: #8a7a70; font-size: .82rem; font-weight: 700; line-height: 1.45; }
 .about-dialog .maker-mark, #about-dialog .maker-mark { margin: 0; padding-top: .8rem; border-top: .12rem solid rgb(61 50 48 / .15); }
+.build-id { margin: .6rem 0 0; text-align: center; font-family: ui-monospace, monospace; font-size: .72rem; color: #8b8f99; }
