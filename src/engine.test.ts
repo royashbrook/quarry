@@ -3,7 +3,7 @@ import {
   capacity, CHUTE_RATE, CHUTES, createGame, currentMine, DEPOT, GATES, migrateV1, mineMultiplier, TRAVEL, travelPrice, HELPER_PAD, HELPER_PRICES, MONUMENT, MONUMENT_STAGES, nextContract, ORES, pickDamage, runFor, SHOP, SURFACE, ZONE_H,
   buyUpgrade, chuteRate, defaultSave, hireHelperNow, mineReach, prestigeMultiplier, prestigeNow, swingSeconds, upgradeMax, upgradePrice, walkSpeed, zoneOf,
 } from './engine'
-import { decodeSave, loadSave, storeSave } from './save'
+import { decodeSave, loadSave, storeSave, SAVE_KEY, storage } from './save'
 
 const memory = () => {
   const values = new Map<string, string>()
@@ -282,6 +282,19 @@ describe('save', () => {
     }
     expect(loadSave(blocked)).toEqual(defaultSave())
     expect(() => storeSave(defaultSave(), blocked)).not.toThrow()
+  })
+
+  it('reads back its own write after a full store refused it', () => {
+    const refused = { getItem: (): string | null => null, setItem: (): void => { throw new DOMException('full', 'QuotaExceededError') } }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: refused })
+    try {
+      const save = { ...defaultSave(), coins: 12 }
+      storeSave(save)
+      expect(loadSave().coins).toBe(12)
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage
+      storage.removeItem(SAVE_KEY) // the accessor remembers a refused key; leave none behind
+    }
   })
 
   it('plays from memory when the browser refuses localStorage outright', () => {

@@ -7,16 +7,20 @@ const PREFIX = 'qy1.'
 // a full store throws on setItem. every storage touch goes through here so a
 // refusal never stops play: the session just lives in memory instead.
 const memory = new Map<string, string>()
+// a key whose last write localStorage refused: memory holds the truth for it until a
+// write gets through again, so a same-session read never returns the stale copy
+const refused = new Set<string>()
 export const storage = {
   getItem(key: string): string | null {
+    if (refused.has(key)) return memory.get(key) ?? null
     try { return localStorage.getItem(key) } catch { return memory.get(key) ?? null }
   },
   setItem(key: string, value: string): void {
     memory.set(key, value)
-    try { localStorage.setItem(key, value) } catch { /* blocked or full: memory holds it */ }
+    try { localStorage.setItem(key, value); refused.delete(key) } catch { refused.add(key) }
   },
   removeItem(key: string): void {
-    memory.delete(key)
+    memory.delete(key); refused.delete(key)
     try { localStorage.removeItem(key) } catch { /* nothing there to remove */ }
   },
 }
