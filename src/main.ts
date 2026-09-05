@@ -80,6 +80,7 @@ function frame(now: number): void {
     if (saveClock >= 1 && !resetting) {
       saveClock = 0
       storeSave(state.save)
+      if (saveNote) saveNote.hidden = !storage.hasRefused()
     }
   } finally {
     requestAnimationFrame(frame)
@@ -88,6 +89,20 @@ function frame(now: number): void {
 
 requestAnimationFrame(frame)
 addEventListener('pagehide', () => { if (!resetting) storeSave(state.save) })
+// a refused write used to be invisible: the game played on and the progress
+// died with the tab. the chip stays up while the last write is refused.
+const saveNote = document.querySelector<HTMLElement>('#save-note')
+
+// the reload is what makes a reset real, and it only makes sense once the
+// durable copy is gone; otherwise it would bring the old save straight back
+// while the button said reset. on a refused removal the game keeps playing
+// from memory and the player is told.
+function resetSave(onRefused: () => void): void {
+  resetting = true
+  if (storage.removeItem(SAVE_KEY)) { location.reload(); return }
+  resetting = false
+  onRefused()
+}
 
 const dialog = document.querySelector<HTMLDialogElement>('#save-dialog')
 const saveButton = document.querySelector<HTMLButtonElement>('#save-button')
@@ -252,14 +267,16 @@ resetButton2?.addEventListener('click', () => {
     resetButton2.textContent = '!? SURE? TAP AGAIN'
     return
   }
-  resetting = true
-  storage.removeItem(SAVE_KEY)
-  location.reload()
+  resetSave(() => {
+    delete resetButton2.dataset.armed
+    resetButton2.textContent = '🗑 could not clear the save on this device'
+  })
 })
 
 // total reset, two taps: the first arms the button (it turns solid), the
 // second wipes the save and reloads. closing the dialog disarms it.
 const resetButton = document.querySelector<HTMLButtonElement>('#reset-save')
+const resetNote = document.querySelector<HTMLElement>('#reset-note')
 if (resetButton && dialog) {
   resetButton.addEventListener('click', () => {
     if (!resetButton.dataset.armed) {
@@ -267,13 +284,16 @@ if (resetButton && dialog) {
       resetButton.textContent = '!?'
       return
     }
-    resetting = true
-    storage.removeItem(SAVE_KEY)
-    location.reload()
+    resetSave(() => {
+      delete resetButton.dataset.armed
+      resetButton.textContent = '🗑'
+      if (resetNote) resetNote.hidden = false
+    })
   })
   dialog.addEventListener('close', () => {
     delete resetButton.dataset.armed
     resetButton.textContent = '🗑'
+    if (resetNote) resetNote.hidden = true
   })
 }
 

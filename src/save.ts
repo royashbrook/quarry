@@ -19,9 +19,17 @@ export const storage = {
     memory.set(key, value)
     try { localStorage.setItem(key, value); refused.delete(key) } catch { refused.add(key) }
   },
-  removeItem(key: string): void {
+  // true when no durable copy is left to come back on reload. memory always
+  // clears; a store that refuses the removal still holds the old value, and a
+  // reload would hand it straight back, so the caller must not reload on false
+  removeItem(key: string): boolean {
     memory.delete(key); refused.delete(key)
-    try { localStorage.removeItem(key) } catch { /* nothing there to remove */ }
+    try { localStorage.removeItem(key) } catch { /* the read below decides */ }
+    try { return localStorage.getItem(key) === null } catch { return true }
+  },
+  // the last write to some key never reached the store: this session is unsaved
+  hasRefused(): boolean {
+    return refused.size > 0
   },
 }
 

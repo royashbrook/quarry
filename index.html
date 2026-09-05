@@ -18,6 +18,7 @@
     <main>
       <canvas id="game" width="960" height="640" tabindex="0" aria-label="Quarry mining game"></canvas>
       <button id="update-toast" class="round-button update-toast" hidden aria-label="Update ready, tap to refresh">↻</button>
+      <p id="save-note" class="save-note" role="status" hidden>not saving on this device</p>
 
       <!-- start menu: shown at boot, engine paused behind it -->
       <div id="start-card" class="sheet-card start" role="dialog" aria-label="Quarry start menu">
@@ -77,6 +78,7 @@
         <div class="save-mark">⛏</div>
         <img id="save-qr" alt="QR code for this save" />
         <a id="rescue-link" target="_blank" rel="noopener">↗</a>
+        <p id="reset-note" class="reset-note" role="status" hidden>could not clear the save on this device</p>
         <button id="reset-save" class="danger" aria-label="Reset all progress">🗑</button>
       </dialog>
     </main>

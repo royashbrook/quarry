@@ -44,3 +44,20 @@ test('keeps running past the first autosave when setItem throws', async ({ page 
   expect(errors).toEqual([])
   expect(await time()).toBeGreaterThan(1.5)
 })
+
+// a refused write used to be invisible: play went on, the save lived only in
+// memory, and closing the tab lost it. the hud says so while it is true and
+// only while it is true.
+test('shows a not-saving chip while writes are refused, drops it once one lands', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__setItem = Storage.prototype.setItem
+    Storage.prototype.setItem = () => { throw new DOMException('quota', 'QuotaExceededError') }
+  })
+  await page.goto('/')
+  await page.click('#play-button')
+  const note = page.locator('#save-note')
+  await expect(note).toBeVisible({ timeout: 30000 })
+  await expect(note).toHaveText('not saving on this device')
+  await page.evaluate(() => { Storage.prototype.setItem = (window as any).__setItem })
+  await expect(note).toBeHidden({ timeout: 30000 })
+})

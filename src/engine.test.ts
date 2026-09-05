@@ -297,6 +297,34 @@ describe('save', () => {
     }
   })
 
+  it('removeItem says whether the durable copy is gone: a refused removal must not reload', () => {
+    const held = { getItem: (): string | null => '{"version":2}', removeItem: (): void => { throw new DOMException('denied', 'SecurityError') } }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: held })
+    try {
+      expect(storage.removeItem(SAVE_KEY)).toBe(false)
+      const cleared = { getItem: (): string | null => null, removeItem: (): void => {} }
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: cleared })
+      expect(storage.removeItem(SAVE_KEY)).toBe(true)
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage
+    }
+  })
+
+  it('remembers a refused write until one lands, so the hud can say so', () => {
+    const full = { getItem: (): string | null => null, setItem: (): void => { throw new DOMException('full', 'QuotaExceededError') } }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: full })
+    try {
+      storeSave(defaultSave())
+      expect(storage.hasRefused()).toBe(true)
+      full.setItem = () => {}
+      storeSave(defaultSave())
+      expect(storage.hasRefused()).toBe(false)
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage
+      storage.removeItem(SAVE_KEY)
+    }
+  })
+
   it('plays from memory when the browser refuses localStorage outright', () => {
     // chrome with site data blocked throws on the property read itself
     Object.defineProperty(globalThis, 'localStorage', {
