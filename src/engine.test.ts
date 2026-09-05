@@ -275,6 +275,31 @@ describe('save', () => {
     expect(back).toEqual(game.save)
   })
 
+  it('a store that throws never throws back: the frame loop depends on it', () => {
+    const blocked = {
+      getItem: (): string | null => { throw new DOMException('denied', 'SecurityError') },
+      setItem: (): void => { throw new DOMException('full', 'QuotaExceededError') },
+    }
+    expect(loadSave(blocked)).toEqual(defaultSave())
+    expect(() => storeSave(defaultSave(), blocked)).not.toThrow()
+  })
+
+  it('plays from memory when the browser refuses localStorage outright', () => {
+    // chrome with site data blocked throws on the property read itself
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get: () => { throw new DOMException('denied', 'SecurityError') },
+    })
+    try {
+      expect(loadSave()).toEqual(defaultSave())
+      const save = { ...defaultSave(), coins: 9 }
+      expect(() => storeSave(save)).not.toThrow()
+      expect(loadSave().coins).toBe(9)
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage
+    }
+  })
+
   it('round trips the qy1 code and rejects garbage', async () => {
     const game = createGame()
     game.save.coins = 500

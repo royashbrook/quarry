@@ -3,7 +3,7 @@ import './style.css'
 import { buyUpgrade, capacity, createGame, currentMine, HELPER_PRICES, hireHelperNow, mineMultiplier, mineReach, MONUMENT_STAGES, pickDamage, prestigeMultiplier, prestigeNow, runFor, step, upgradeMax, upgradePrice, UPGRADES, walkSpeed, WORLD, type GameState, type Point, type UpgradeId } from './engine'
 import { Controls } from './input'
 import { Renderer } from './render'
-import { loadSave, rescueUrl, storeSave } from './save'
+import { loadSave, rescueUrl, SAVE_KEY, storage, storeSave } from './save'
 import { backingSize, computeViewport, VIEW, type Viewport } from './viewport'
 
 declare global {
@@ -59,26 +59,31 @@ let resetting = false // once armed-and-fired, nothing may write the save again
 function frame(now: number): void {
   const elapsed = Math.min(0.05, (now - previous) / 1000)
   previous = now
-  if (!paused) {
-    step(state, elapsed, controls.vector)
-    updateCamera(elapsed)
+  // a throw anywhere in a frame must still schedule the next one: a dead
+  // animation chain is a silent freeze, an error in the console is not
+  try {
+    if (!paused) {
+      step(state, elapsed, controls.vector)
+      updateCamera(elapsed)
+    }
+    if (renderer.coachStep === 'move' && coachOrigin
+      && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
+    if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = 'sell'
+    if (renderer.coachStep === 'sell' && state.save.lifetime > 0) renderer.coachStep = null
+    state.pings.splice(0).forEach(bleep) // drain feel events even while paused
+    if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
+      idleSuspended = true
+      void audio.suspend() // drops the system "playing" indicator between sounds
+    }
+    renderer.draw(state, controls.joystick, viewport, cameraY)
+    saveClock += elapsed
+    if (saveClock >= 1 && !resetting) {
+      saveClock = 0
+      storeSave(state.save)
+    }
+  } finally {
+    requestAnimationFrame(frame)
   }
-  if (renderer.coachStep === 'move' && coachOrigin
-    && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
-  if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = 'sell'
-  if (renderer.coachStep === 'sell' && state.save.lifetime > 0) renderer.coachStep = null
-  state.pings.splice(0).forEach(bleep) // drain feel events even while paused
-  if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
-    idleSuspended = true
-    void audio.suspend() // drops the system "playing" indicator between sounds
-  }
-  renderer.draw(state, controls.joystick, viewport, cameraY)
-  saveClock += elapsed
-  if (saveClock >= 1 && !resetting) {
-    saveClock = 0
-    storeSave(state.save)
-  }
-  requestAnimationFrame(frame)
 }
 
 requestAnimationFrame(frame)
@@ -248,7 +253,7 @@ resetButton2?.addEventListener('click', () => {
     return
   }
   resetting = true
-  localStorage.removeItem('quarry_save_v1')
+  storage.removeItem(SAVE_KEY)
   location.reload()
 })
 
@@ -263,7 +268,7 @@ if (resetButton && dialog) {
       return
     }
     resetting = true
-    localStorage.removeItem('quarry_save_v1')
+    storage.removeItem(SAVE_KEY)
     location.reload()
   })
   dialog.addEventListener('close', () => {
@@ -280,13 +285,13 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 // per sound, context created on first gesture (autoplay policy), mute persists.
 const MUTE_KEY = 'quarry_mute'
 const muteButton = document.querySelector<HTMLButtonElement>('#mute-button')
-let muted = localStorage.getItem(MUTE_KEY) === '1'
+let muted = storage.getItem(MUTE_KEY) === '1'
 let audio: AudioContext | null = null
 const syncMute = () => { if (muteButton) muteButton.textContent = muted ? '🔇 SOUND OFF' : '🔊 SOUND ON' }
 syncMute()
 muteButton?.addEventListener('click', () => {
   muted = !muted
-  localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+  storage.setItem(MUTE_KEY, muted ? '1' : '0')
   syncMute()
 })
 
