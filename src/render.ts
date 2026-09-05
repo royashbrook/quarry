@@ -43,9 +43,12 @@ export class Renderer {
   coachStep: CoachStep = null
   /** css px of ui docked at the screen bottom (the nav); hud stays above it */
   bottomInset = 0
+  /** css px the shell's status chip takes under the column's pills; the
+   *  column reserves it so world labels clamp below the chip, not under it */
+  noteInset = 0
   /** last-frame screen boxes of the hud column, the SELL sign, and the coach:
    *  what the sign clamps against, and what the browser tests read back */
-  boxes: { column: Box; sell: Box | null; coach: { text: string; box: Box } | null } = { column: { x: 0, y: 0, w: 0, h: 0 }, sell: null, coach: null }
+  boxes: { column: Box; depth: Box; sell: Box | null; coach: { text: string; box: Box } | null } = { column: { x: 0, y: 0, w: 0, h: 0 }, depth: { x: 0, y: 0, w: 0, h: 0 }, sell: null, coach: null }
   /** the smallest css px any text drew at in the last frame, and whether the
    *  contract drew as the titled card: what the browser tests read back */
   smallestText = Infinity
@@ -600,7 +603,7 @@ export class Renderer {
     const pad = 14
     const narrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - pad * 3 - 132) < 150
     const depthTop = pad + (narrow ? 126 : 88)
-    return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad, narrow }
+    return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad + this.noteInset, narrow }
   }
 
   private drawHud(state: GameState, view: Viewport): void {
@@ -652,9 +655,11 @@ export class Renderer {
     // on its own paper pill so it never prints bare across whatever the world
     // has scrolled under the column (the hut, after the first walk). the
     // bottom strip belongs to conditional pills (coach, sound) and the nav
-    const depthTop = column.y + column.h - 26
+    // the column's height reserves noteInset for the save note; the pill stays above it
+    const depthTop = column.y + column.h - 26 - this.noteInset
     ctx.fillStyle = 'rgba(244,235,221,.94)'
     cssRound(ctx, pad, depthTop, 132, 26, 13)
+    this.boxes.depth = { x: pad, y: depthTop, w: 132, h: 26 }
     this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 66, depthTop + 18, 14, PALETTE.ink, true)
     // the first-minute coach: three lessons for a fresh save, advanced by the
     // real actions, drawn in the same hud language as everything else. the

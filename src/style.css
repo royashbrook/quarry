@@ -104,6 +104,28 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   opacity: .7;
 }
 .danger[data-armed] { background: #a04848; opacity: 1; }
+.reset-note { margin: .8rem 0 0; font-size: .78rem; font-weight: 700; color: #a04848; }
+.reset-note[hidden] { display: none !important; }
+
+/* the hud's honest chip: a warning in the top-left column's own slot (the
+   shell sets top from the column's measured height), read at a glance */
+.save-note {
+  position: fixed;
+  left: 14px;
+  top: 142px;
+  margin: 0;
+  padding: .25rem .7rem;
+  border: .15rem solid #a04848;
+  border-radius: 1rem;
+  background: #f4ebdd;
+  color: #a04848;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.save-note[hidden] { display: none !important; }
 
 /* ===== bottom navigation + sheets (#17), the craftrush pattern ===== */
 #bottom-nav {

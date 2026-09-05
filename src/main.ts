@@ -3,7 +3,7 @@ import './style.css'
 import { buyUpgrade, capacity, createGame, currentMine, HELPER_PRICES, hireHelperNow, mineMultiplier, mineReach, MONUMENT_STAGES, pickDamage, prestigeMultiplier, prestigeNow, runFor, step, upgradeMax, upgradePrice, UPGRADES, walkSpeed, WORLD, type GameState, type Point, type UpgradeId } from './engine'
 import { Controls } from './input'
 import { Renderer } from './render'
-import { loadSave, rescueUrl, storeSave } from './save'
+import { loadSave, rescueUrl, SAVE_KEY, storage, storeSave } from './save'
 import { backingSize, computeViewport, VIEW, type Viewport } from './viewport'
 
 declare global {
@@ -59,30 +59,58 @@ let resetting = false // once armed-and-fired, nothing may write the save again
 function frame(now: number): void {
   const elapsed = Math.min(0.05, (now - previous) / 1000)
   previous = now
-  if (!paused) {
-    step(state, elapsed, controls.vector)
-    updateCamera(elapsed)
+  // a throw anywhere in a frame must still schedule the next one: a dead
+  // animation chain is a silent freeze, an error in the console is not
+  try {
+    if (!paused) {
+      step(state, elapsed, controls.vector)
+      updateCamera(elapsed)
+    }
+    if (renderer.coachStep === 'move' && coachOrigin
+      && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
+    if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = 'sell'
+    if (renderer.coachStep === 'sell' && state.save.lifetime > 0) renderer.coachStep = null
+    state.pings.splice(0).forEach(bleep) // drain feel events even while paused
+    if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
+      idleSuspended = true
+      void audio.suspend() // drops the system "playing" indicator between sounds
+    }
+    renderer.draw(state, controls.joystick, viewport, cameraY)
+    saveClock += elapsed
+    if (saveClock >= 1 && !resetting) {
+      saveClock = 0
+      storeSave(state.save)
+      if (saveNote) {
+        saveNote.hidden = !storage.hasRefused()
+        renderer.noteInset = saveNote.hidden ? 0 : saveNote.offsetHeight + 6
+      }
+    }
+    if (saveNote && !saveNote.hidden) {
+      const column = renderer.boxes.column
+      saveNote.style.top = `${column.y + column.h - renderer.noteInset + 6}px`
+    }
+  } finally {
+    requestAnimationFrame(frame)
   }
-  if (renderer.coachStep === 'move' && coachOrigin
-    && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
-  if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = 'sell'
-  if (renderer.coachStep === 'sell' && state.save.lifetime > 0) renderer.coachStep = null
-  state.pings.splice(0).forEach(bleep) // drain feel events even while paused
-  if (audio && audio.state === 'running' && performance.now() - lastBleepAt > 15000) {
-    idleSuspended = true
-    void audio.suspend() // drops the system "playing" indicator between sounds
-  }
-  renderer.draw(state, controls.joystick, viewport, cameraY)
-  saveClock += elapsed
-  if (saveClock >= 1 && !resetting) {
-    saveClock = 0
-    storeSave(state.save)
-  }
-  requestAnimationFrame(frame)
 }
 
 requestAnimationFrame(frame)
 addEventListener('pagehide', () => { if (!resetting) storeSave(state.save) })
+// a refused write used to be invisible: the game played on and the progress
+// died with the tab. the chip stays up while the last write is refused, in a
+// slot the hud column reserves for it, so the SELL sign clamps below it
+const saveNote = document.querySelector<HTMLElement>('#save-note')
+
+// the reload is what makes a reset real, and it only makes sense once the
+// durable copy is gone; otherwise it would bring the old save straight back
+// while the button said reset. on a refused removal the game keeps playing
+// from memory and the player is told.
+function resetSave(onRefused: () => void): void {
+  resetting = true
+  if (storage.removeItem(SAVE_KEY)) { location.reload(); return }
+  resetting = false
+  onRefused()
+}
 
 const dialog = document.querySelector<HTMLDialogElement>('#save-dialog')
 const saveButton = document.querySelector<HTMLButtonElement>('#save-button')
@@ -247,14 +275,16 @@ resetButton2?.addEventListener('click', () => {
     resetButton2.textContent = '!? SURE? TAP AGAIN'
     return
   }
-  resetting = true
-  localStorage.removeItem('quarry_save_v1')
-  location.reload()
+  resetSave(() => {
+    delete resetButton2.dataset.armed
+    resetButton2.textContent = '🗑 could not clear the save on this device'
+  })
 })
 
 // total reset, two taps: the first arms the button (it turns solid), the
 // second wipes the save and reloads. closing the dialog disarms it.
 const resetButton = document.querySelector<HTMLButtonElement>('#reset-save')
+const resetNote = document.querySelector<HTMLElement>('#reset-note')
 if (resetButton && dialog) {
   resetButton.addEventListener('click', () => {
     if (!resetButton.dataset.armed) {
@@ -262,13 +292,16 @@ if (resetButton && dialog) {
       resetButton.textContent = '!?'
       return
     }
-    resetting = true
-    localStorage.removeItem('quarry_save_v1')
-    location.reload()
+    resetSave(() => {
+      delete resetButton.dataset.armed
+      resetButton.textContent = '🗑'
+      if (resetNote) resetNote.hidden = false
+    })
   })
   dialog.addEventListener('close', () => {
     delete resetButton.dataset.armed
     resetButton.textContent = '🗑'
+    if (resetNote) resetNote.hidden = true
   })
 }
 
@@ -280,13 +313,13 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 // per sound, context created on first gesture (autoplay policy), mute persists.
 const MUTE_KEY = 'quarry_mute'
 const muteButton = document.querySelector<HTMLButtonElement>('#mute-button')
-let muted = localStorage.getItem(MUTE_KEY) === '1'
+let muted = storage.getItem(MUTE_KEY) === '1'
 let audio: AudioContext | null = null
 const syncMute = () => { if (muteButton) muteButton.textContent = muted ? '🔇 SOUND OFF' : '🔊 SOUND ON' }
 syncMute()
 muteButton?.addEventListener('click', () => {
   muted = !muted
-  localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+  storage.setItem(MUTE_KEY, muted ? '1' : '0')
   syncMute()
 })
 
