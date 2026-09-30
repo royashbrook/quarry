@@ -39,8 +39,11 @@ jobs:
       - run: npm run build
       - name: check the build produced a site
         run: |
-          test -f dist/index.html
-          test -f dist/sw.js
+          test -f build/index.html
+          test -f build/service-worker.js
+          test -f build/_app/version.json
+          test -f build/manifest.webmanifest
+          test -f build/rescue.html
       - name: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

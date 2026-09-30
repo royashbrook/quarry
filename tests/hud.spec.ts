@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ready } from './ready'
 import { hud, intersects, walkRocks } from './helpers'
 
 // the first thirty seconds on a phone: the SELL sign must stay readable while
@@ -7,7 +8,7 @@ import { hud, intersects, walkRocks } from './helpers'
 test.use({ viewport: { width: 430, height: 932 } })
 
 test('the SELL sign never hides under the hud column as the camera pans', async ({ page }) => {
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/'); await ready(page); await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   let seen = 0
   for (const { rock, boxes } of await walkRocks(page)) {
@@ -19,7 +20,7 @@ test('the SELL sign never hides under the hud column as the camera pans', async 
 })
 
 test('the coach says CARRY IT TO SELL after the first pickup, until the first sale', async ({ page }) => {
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/'); await ready(page); await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   expect((await hud(page)).coach?.text).toBe('DRAG ANYWHERE TO MOVE')
   await page.evaluate(() => {

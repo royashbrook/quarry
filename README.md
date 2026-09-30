@@ -17,7 +17,8 @@ npm ci
 npm run dev      # local dev server
 npm test         # engine tests
 npm run check    # typecheck + tests + build, the merge gate
-npm run test:e2e # loop, camera, and offline browser checks
+npm run test:e2e # browser checks: loop, camera, offline, same-document remount, two-build update
+PORT=4499 npm run test:e2e  # the same on another port (4177 is the default)
 node tools/make-icons.mjs  # re-rasterize the svg logo to png icons
 ```
 

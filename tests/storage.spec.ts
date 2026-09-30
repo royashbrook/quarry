@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ready } from './ready'
 import { clamped, intersects, walkDown } from './helpers'
 
 // a browser that blocks site data (chrome "block all cookies", managed kid
@@ -13,6 +14,7 @@ test('boots and mines with localStorage denied', async ({ page }) => {
     })
   })
   await page.goto('/')
+  await ready(page)
   await expect(page.locator('#start-stats')).toHaveText('a tiny mining game')
   await page.click('#play-button')
   await expect(page.locator('#bottom-nav')).toBeVisible()
@@ -36,6 +38,7 @@ test('keeps running past the first autosave when setItem throws', async ({ page 
     Storage.prototype.setItem = () => { throw new DOMException('quota', 'QuotaExceededError') }
   })
   await page.goto('/')
+  await ready(page)
   await page.click('#play-button')
   // the save clock runs from boot and sim time from PLAY, on the same frames,
   // so the first autosave always lands before sim time reaches one second.
@@ -55,6 +58,7 @@ test('shows a not-saving chip while writes are refused, drops it once one lands'
     Storage.prototype.setItem = () => { throw new DOMException('quota', 'QuotaExceededError') }
   })
   await page.goto('/')
+  await ready(page)
   await page.click('#play-button')
   const note = page.locator('#save-note')
   await expect(note).toBeVisible({ timeout: 30000 })
@@ -73,6 +77,7 @@ for (const viewport of [{ width: 430, height: 932 }, { width: 430, height: 740 }
       Storage.prototype.setItem = () => { throw new DOMException('quota', 'QuotaExceededError') }
     })
     await page.goto('/')
+    await ready(page)
     await page.click('#play-button')
     const note = page.locator('#save-note')
     await expect(note).toBeVisible({ timeout: 30000 })

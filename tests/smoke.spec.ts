@@ -1,9 +1,12 @@
 import { expect, test } from '@playwright/test'
+import { ready } from './ready'
 
 // the whole first-zone loop in one deterministic run: mine, carry, sell,
 // buy an upgrade, and start paying the gate. real built game, sim time.
 test('mine, sell, upgrade, gate: the loop end to end', async ({ page }) => {
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/')
+  await ready(page)
+  await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   const result = await page.evaluate(() => {
     const game = window.__quarry
@@ -33,7 +36,9 @@ test('mine, sell, upgrade, gate: the loop end to end', async ({ page }) => {
 })
 
 test('a full pack sells for the sum of its ore values', async ({ page }) => {
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/')
+  await ready(page)
+  await page.click('#play-button')
   const coins = await page.evaluate(() => {
     const game = window.__quarry
     game.pause(true)

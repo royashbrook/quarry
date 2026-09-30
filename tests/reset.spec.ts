@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { ready } from './ready'
 
 test('total reset takes two taps and wipes the save', async ({ page }) => {
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/')
+  await ready(page) // before ANY hydrated click, not after
+  await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   // earn something so there is progress to lose
   await page.evaluate(() => {
@@ -20,7 +23,10 @@ test('total reset takes two taps and wipes the save', async ({ page }) => {
   await reset.click() // arm
   await expect(reset).toContainText('SURE?')
   await reset.click() // fire
+  // the app reloads itself here, so waiting on 'load' is not enough: the hook is
+  // installed after hydration, and the next line clicks a hydrated control.
   await page.waitForLoadState('load')
+  await ready(page)
   await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   const fresh = await page.evaluate(() => window.__quarry.snapshot().save)
@@ -32,7 +38,7 @@ test('total reset takes two taps and wipes the save', async ({ page }) => {
 // reload anyway: the old save came straight back under a button that said
 // reset. now the reload waits for a clear that actually happened.
 test('a refused removal says so and keeps playing instead of reloading', async ({ page }) => {
-  await page.goto('/'); await page.click('#play-button')
+  await page.goto('/'); await ready(page); await page.click('#play-button')
   await page.evaluate(() => {
     const game = window.__quarry
     const rock = game.snapshot().rocks[0]

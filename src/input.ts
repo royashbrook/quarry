@@ -6,8 +6,14 @@ export class Controls {
   readonly joystick = { active: false, origin: { x: 0, y: 0 }, current: { x: 0, y: 0 } }
   private keys = new Set<string>()
   private pointer: number | null = null
+  // every listener attaches under this signal so destroy() detaches all eight at
+  // once. the svelte wrap mounts and unmounts the game; a remount that left the
+  // old window/canvas listeners live would double-drive input and leak (a leaked
+  // handler is invisible until it isn't). one abort, no orphans.
+  private ac = new AbortController()
 
   constructor(private canvas: HTMLCanvasElement, private view: () => Viewport, private cameraY: () => number) {
+    const signal = this.ac.signal
     addEventListener('keydown', event => {
       const game = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
       if (event.metaKey || event.ctrlKey || event.altKey) return // shortcuts stay native
@@ -15,15 +21,25 @@ export class Controls {
       this.keys.add(event.key.toLowerCase())
       this.readKeys()
       event.preventDefault()
-    })
-    addEventListener('keyup', event => { this.keys.delete(event.key.toLowerCase()); this.readKeys() })
+    }, { signal })
+    addEventListener('keyup', event => { this.keys.delete(event.key.toLowerCase()); this.readKeys() }, { signal })
     // a blurred window must never keep walking on a held key
-    addEventListener('blur', () => { this.keys.clear(); this.readKeys() })
-    addEventListener('pagehide', () => { this.keys.clear(); this.readKeys() })
-    canvas.addEventListener('pointerdown', event => this.down(event))
-    canvas.addEventListener('pointermove', event => this.move(event))
-    canvas.addEventListener('pointerup', event => this.up(event))
-    canvas.addEventListener('pointercancel', event => this.up(event))
+    addEventListener('blur', () => { this.keys.clear(); this.readKeys() }, { signal })
+    addEventListener('pagehide', () => { this.keys.clear(); this.readKeys() }, { signal })
+    canvas.addEventListener('pointerdown', event => this.down(event), { signal })
+    canvas.addEventListener('pointermove', event => this.move(event), { signal })
+    canvas.addEventListener('pointerup', event => this.up(event), { signal })
+    canvas.addEventListener('pointercancel', event => this.up(event), { signal })
+  }
+
+  // detach all listeners and release any held pointer capture. idempotent: a second
+  // call is a no-op (the signal is already aborted).
+  destroy(): void {
+    if (this.pointer !== null) {
+      try { this.canvas.releasePointerCapture(this.pointer) } catch { /* already gone */ }
+      this.pointer = null
+    }
+    this.ac.abort()
   }
 
   private down(event: PointerEvent): void {

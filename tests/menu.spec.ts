@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { ready } from './ready'
 
 test.describe.configure({ timeout: 60000 }) // the farm loop is slow on ci runners
 
 test('start card gates play, bottom nav opens sheets, menu shop buys from anywhere', async ({ page }) => {
   await page.goto('/')
+  await ready(page)
   // start card is up, game paused behind it
   await expect(page.locator('#start-card')).toBeVisible()
   const frozen = await page.evaluate(() => window.__quarry.snapshot().time)
@@ -46,6 +48,7 @@ test('start card gates play, bottom nav opens sheets, menu shop buys from anywhe
 
 test('a fresh save gets the two-beat coach, a returning save gets silence', async ({ page }) => {
   await page.goto('/')
+  await ready(page)
   await page.click('#play-button')
   // beat one shows until real movement
   let step = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve((window as any).__quarryCoach ?? 'unknown'))))
@@ -64,6 +67,7 @@ test('a fresh save gets the two-beat coach, a returning save gets silence', asyn
     game.advance(3)
   })
   await page.reload()
+  await ready(page)
   await page.click('#play-button')
   await expect(page.locator('canvas')).toBeVisible()
   const lifetime = await page.evaluate(() => window.__quarry.snapshot().save.lifetime)
