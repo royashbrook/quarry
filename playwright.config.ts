@@ -10,6 +10,11 @@ export default defineConfig({
   // as its own invocation after this one (playwright.update.config.ts)
   testIgnore: 'sw-update.spec.ts',
   retries: process.env.CI ? 1 : 0, // absorb runner variance in ci, never locally
+  // headless chromium paints the canvas in software, so at the default 1280x720 a
+  // click waits seconds for two stable frames: the click-heavy specs (sheets, contrast,
+  // reset) run 20-28s here and the ci runner is slower still (sheets timed out at 30s
+  // on its first ci run). menu.spec carried this per file; it is the suite's floor.
+  timeout: 60_000,
   workers: 1,
   use: { baseURL: `http://127.0.0.1:${port}` },
   webServer: {
