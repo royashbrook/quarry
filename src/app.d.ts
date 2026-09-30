@@ -29,9 +29,17 @@ export interface QuarryHooks {
   forceAudioIdle: () => void
 }
 
+/** the same-document mount/unmount hook +layout.svelte installs under the same gate,
+ *  so tests/lifecycle.spec.ts can tear the app down and remount it without a reload. */
+export interface QuarryLifecycle {
+  mount: () => void
+  unmount: () => void
+}
+
 declare global {
   interface Window {
     __quarry: QuarryHooks
+    __quarryLifecycle: QuarryLifecycle
   }
 }
 

@@ -17,7 +17,8 @@ HUD chrome is tokenized shell, not exempt game art. v6 closes the review v5 re-r
 blockers + 2 version P2 at head `7a12f57`): every `v0.1.0` / frozen-count reference is
 corrected to `v0.1` with a derived `N`, and the CI stamp gate is anchored
 `^\d+\.\d+\.\d+$` with a fallback that satisfies it. v6 is the current head for review;
-tags `[was: v2-BLOCKER]` / `[was: v2-P2.n]` / `[was: v4-P2.n]` / `[was: v5-P2.n]`.
+tags `[was: v2-BLOCKER]` / `[was: v2-P2.n]` / `[was: v4-P2.n]` / `[was: v5-P2.n]`. v7 (#35)
+lands the two acceptance proofs, each section below says where.
 
 ## why quarry is a different shape than the pilot
 
@@ -133,7 +134,8 @@ joystickOrigin / pause / setTime / audioState) is what the playwright specs driv
 - **prove it is absent in prod** [was: v2-P2.2]: the ordinary playwright server builds
   with `--mode test`, where the hook is PRESENT, so that suite cannot prove the guard
   strips it. add a separate production-build/preview smoke that asserts
-  `window.__quarry` is `undefined`.
+  `window.__quarry` is `undefined` (landed inside `tests/sw-update.spec.ts`, which
+  runs against real production builds).
 - **identity-safe cleanup**: on teardown, only delete `window.__quarry` if it is the
   object THIS mount installed (a remount must not clear the new mount's hooks).
 - **the two-clock split, spelled exactly** [was: v2-P2.2]: RAF updates its wall-clock
@@ -162,6 +164,13 @@ alone are weak, so the proof asserts the observable old/new-instance contract:
 
 this is the test that catches a leaked loop or a stale hook that a reload-only suite
 cannot see.
+
+landed as `tests/lifecycle.spec.ts`. the app is torn down and remounted through
+`window.__quarryLifecycle` (`+layout.svelte`, the same DEV-or-test gate as the hooks),
+and the counts come from a ledger installed before any page script that tags every
+frame, timer, listener and observer with a generation: the remount's generation must
+be an absolute zero after its unmount, and the totals must return to the same floor.
+proven red against a leaked frame, a leaked listener set and a leaked interval.
 
 ## PWA shell: adopt the pilot's, drop quarry's own [was: P2.6]
 
@@ -224,6 +233,18 @@ version path, not hand-edit `version.json`:
   `/_app/version.json` and asserts the app reaches update-ready state off the genuine
   version delta. the pilot's stale-boot bug survived a weaker check twice; a
   hand-swapped version.json would reintroduce exactly that blind spot.
+
+landed as `tests/sw-update.spec.ts` under `playwright.update.config.ts` (its own
+invocation, chained by `npm run test:e2e`, because it serves the two builds itself on
+the suite port and swaps the deployment mid-test). A and B are two clones of the
+checkout carrying the working tree's sources, B one empty commit later, both built for
+production by the real helper (so the stamps are `0.1.N` and `0.1.N+1`, derived). the
+spec proves update-ready off the second `/_app/version.json` request counted at the
+server, then that the worker finds, installs, activates and claims B, that one tap
+reloads into B, and that B boots offline. being production builds, it is also the
+"hooks absent from the prod bundle" smoke asked for above. proven red against a worker
+that drops the version.json network-first special case: the client then reads UP TO
+DATE against a changed deployment, the pilot's scar reproduced and caught.
 
 ## CI + protection: reuse the job names, do NOT rename [was: BLOCKER]
 

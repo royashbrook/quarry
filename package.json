@@ -12,7 +12,8 @@
     "lint:copy": "node tools/lint-copy.mjs",
     "engine-pin": "node tools/check-engine-blob.mjs",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test && npm run test:e2e:update",
+    "test:e2e:update": "playwright test --config playwright.update.config.ts",
     "check": "npm run engine-pin && npm run test:lint && npm run lint:copy && npm run lint:tokens && npm run svelte-check && npm run test && npm run build",
     "lint:tokens": "node tools/lint-tokens.mjs src/style.css src/lib/Shell.svelte src/lib/Game.svelte src/lib/Sheets.svelte",
     "test:lint": "node tools/test-lint-tokens.mjs"
