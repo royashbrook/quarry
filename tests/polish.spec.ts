@@ -17,6 +17,22 @@ test('the start card is opaque, and about prints the build id', async ({ page })
   await expect(page.locator('#build-id')).toHaveText(/^v\d+\.\d+\.\d+ · (?:[0-9a-f]{7,}|local)$/)
 })
 
+// the house floor is 44px on BOTH axes for every tap target, and the about sheet's
+// close and maker-mark links only exist once it opens (kidgames gate §3)
+test('every about sheet link and button is a 44px tap target', async ({ page }) => {
+  await page.goto('/')
+  await ready(page)
+  await page.click('#about-open')
+  const targets = page.locator('#about-dialog').locator('a[href], button')
+  expect(await targets.count()).toBeGreaterThan(0)
+  for (const target of await targets.all()) {
+    const box = await target.boundingBox()
+    expect(box, await target.textContent() ?? '').not.toBeNull()
+    expect(box!.height).toBeGreaterThanOrEqual(44)
+    expect(box!.width).toBeGreaterThanOrEqual(44)
+  }
+})
+
 test('the sound toggle keeps its word in both states', async ({ page }) => {
   await page.goto('/'); await ready(page); await page.click('#play-button')
   await page.click('[data-sheet="settings"]')
