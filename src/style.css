@@ -132,6 +132,27 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 }
 .danger[data-armed] { background: var(--warn); opacity: 1; }
 
+/* the hud's honest chip: a warning in the top-left column's own slot (the game
+   sets top from the column's measured height), read at a glance. shell chrome,
+   so it paints from the tokens like the rest */
+.save-note {
+  position: fixed;
+  left: 14px;
+  top: 142px;
+  margin: 0;
+  padding: .25rem .7rem;
+  border: .15rem solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--warn);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.save-note[hidden] { display: none !important; }
+
 /* ===== bottom navigation + sheets (#17), the craftrush pattern ===== */
 #bottom-nav {
   position: fixed;
@@ -222,7 +243,7 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
   place-content: center;
   justify-items: center;
   gap: .6rem;
-  background: var(--surface-raised);
+  background: var(--surface-raised); /* an opaque token: the hud must not ghost through the one calm screen */
   z-index: 30;
   text-align: center;
 }
@@ -286,6 +307,8 @@ dialog form { position: absolute; right: .7rem; top: .5rem; }
 .about-body { margin: 0 0 .8rem; font-size: .95rem; line-height: 1.5; }
 .about-ethos { margin: 0 0 1rem; color: var(--ink-dim); font-size: .82rem; font-weight: 700; line-height: 1.45; }
 .about-dialog .maker-mark, #about-dialog .maker-mark { margin: 0; padding-top: .8rem; border-top: .12rem solid rgb(from var(--line) r g b / .15); }
+/* the build id under the mark: small and dim, so a player can say which build they have */
+.build-id { margin: .6rem 0 0; text-align: center; font-family: var(--font-mono); font-size: .72rem; color: var(--ink-dim); }
 
 /* the mark links are real tap targets on a phone, not 14px text: the house floor
    is 44px on BOTH axes (the pilot scar was 31x23 links that passed a visual check) */

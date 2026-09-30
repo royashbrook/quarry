@@ -16,7 +16,7 @@
     onmute,
     onplay,
     measureNav,
-    beginReset,
+    resetSave,
     api,
     startStats = '',
   }: {
@@ -26,7 +26,9 @@
     onmute?: () => void
     onplay?: (navHeight: number) => void
     measureNav?: (navHeight: number) => void
-    beginReset?: () => void
+    /** the game's reset: true when the durable save is confirmed gone (reload), false
+     *  when the store refused and play goes on from memory (say so, no reload) */
+    resetSave?: () => boolean
     api?: GameApi
     startStats?: string
   } = $props()
@@ -36,6 +38,7 @@
   let aboutOpen = $state(false)
   let aboutEl: HTMLDialogElement | undefined = $state()
   let resetArmed = $state(false)
+  let resetRefused = $state(false) // the store would not clear the save: the button says so
   let updateLabel = $state('↻ CHECK FOR UPDATES')
   let updateReady = $state(false)
   let navEl: HTMLElement | undefined = $state()
@@ -100,12 +103,15 @@
   }
 
   function resetAll(): void {
-    if (!resetArmed) { resetArmed = true; return }
-    // ARM FIRST. the loop autosaves every second and pagehide saves on unload, so
-    // wiping storage while the game can still write just resurrects the save.
-    beginReset?.()
-    localStorage.removeItem('quarry_save_v1')
-    location.reload()
+    if (!resetArmed) { resetArmed = true; resetRefused = false; return }
+    // the game arms itself first (the loop autosaves every second and pagehide saves
+    // on unload, so wiping storage while it can still write just resurrects the save),
+    // then removes the durable copy. the reload is what makes a reset real, and it only
+    // makes sense once that copy is confirmed gone: otherwise it would bring the old
+    // save straight back while the button said reset.
+    if (resetSave?.()) { location.reload(); return }
+    resetArmed = false
+    resetRefused = true
   }
 </script>
 
@@ -149,11 +155,11 @@
     <h2>MORE</h2>
     <div class="settings-row">
       <button id="mute-button" class="mute-button" aria-label="Toggle sound" aria-pressed={!muted} onclick={() => onmute?.()}>
-        {muted ? '🔇' : '🔊'} SOUND
+        {muted ? '🔇 SOUND OFF' : '🔊 SOUND ON'}
       </button>
       <button id="check-updates" aria-label="Check for updates" onclick={checkUpdates}>{updateLabel}</button>
       <button id="reset-save2" aria-label="Reset all progress" class="danger-row" data-armed={resetArmed ? '' : undefined} onclick={resetAll}>
-        {resetArmed ? '!? SURE? TAP AGAIN' : '🗑 RESET ALL'}
+        {resetRefused ? '🗑 could not clear the save on this device' : resetArmed ? '!? SURE? TAP AGAIN' : '🗑 RESET ALL'}
       </button>
       <button id="about-open2" aria-label="About" onclick={() => (aboutOpen = true)}>🧡 ABOUT</button>
     </div>
@@ -178,6 +184,8 @@
     <span aria-hidden="true" class="mark-dot">·</span>
     <a href="https://github.com/sponsors/royashbrook" target="_blank" rel="noreferrer" class="mark-sponsor">sponsor me</a>
   </p>
+  <!-- the build id, stamped by vite at build time, so a player can say which build they have -->
+  <p id="build-id" class="build-id">v{__BUILD__}</p>
 </dialog>
 
 <style>

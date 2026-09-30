@@ -1,11 +1,13 @@
 // quarry's renderer, portrait-first: the world is a vertical dig, the camera
 // pans down through strata, and EVERY piece of text draws in SCREEN space with
-// a 13 css px floor so a phone can actually read it. all art is canvas vectors.
+// a 14 css px floor so a phone can actually read it. all art is canvas vectors.
 import type { Chip, GameState, Ore, Point, Rock, Spark, UpgradeId } from './engine'
 import { BUY_CHARGE_SECONDS, capacity, CHUTES, currentMine, DEPOT, GATES, HELPER_PAD, HELPER_PRICES, mineMultiplier, MONUMENT, MONUMENT_STAGES, ORES, pickDamage, RAIL_X, SHOP, SURFACE, TRAVEL, travelPickNeeded, travelPrice, upgradeMax, upgradePrice, UPGRADES, WORLD, ZONE_H } from './engine'
 import { worldToClient, type Viewport } from './viewport'
 
 type Joystick = { active: boolean; origin: Point; current: Point }
+type Box = { x: number; y: number; w: number; h: number }
+type CoachStep = 'move' | 'mine' | 'sell' | null
 
 export const PALETTE = {
   sky: '#BDE3F0',
@@ -37,10 +39,20 @@ export class Renderer {
   reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
   /** set by the shell; lets the hud show the truth about sound on screen */
   audioState: () => string = () => 'none'
-  /** set by the shell; 'move' | 'mine' | null drives the first-minute coach */
-  coachStep: 'move' | 'mine' | null = null
+  /** set by the shell; move, mine, sell, or null drives the first-minute coach */
+  coachStep: CoachStep = null
   /** css px of ui docked at the screen bottom (the nav); hud stays above it */
   bottomInset = 0
+  /** css px the shell's status chip takes under the column's pills; the
+   *  column reserves it so world labels clamp below the chip, not under it */
+  noteInset = 0
+  /** last-frame screen boxes of the hud column, the SELL sign, and the coach:
+   *  what the sign clamps against, and what the browser tests read back */
+  boxes: { column: Box; depth: Box; sell: Box | null; coach: { text: string; box: Box } | null } = { column: { x: 0, y: 0, w: 0, h: 0 }, depth: { x: 0, y: 0, w: 0, h: 0 }, sell: null, coach: null }
+  /** the smallest css px any text drew at in the last frame, and whether the
+   *  contract drew as the titled card: what the browser tests read back */
+  smallestText = Infinity
+  contractTitled = false
 
   /** the HUD is shell CHROME, not world art, so it paints from the shell's theme
    *  tokens like the rest of the chrome. resolved from the document (cached, and
@@ -112,6 +124,7 @@ export class Renderer {
     const ctx = this.context
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    this.smallestText = Infinity
     const k = view.dpr * view.scale
     const amp = this.reducedMotion ? 0.3 : 1
     const shakeX = state.shake > 0 ? Math.sin(state.time * 71) * state.shake * 20 * amp : 0
@@ -541,8 +554,18 @@ export class Renderer {
     const project = (p: Point) => worldToClient(view, { x: p.x, y: p.y - cameraY })
     const onScreen = (c: Point) => c.y > -60 && c.y < view.cssHeight + 60
 
+    // the SELL sign clamps below the hud column the way the monument banner
+    // does, and stays while any of the hut (ring included) shows under it:
+    // the first time a kid needs the word is when the camera has panned
+    const column = this.hudColumn(state, view)
     const depot = project({ x: DEPOT.x, y: DEPOT.y - 4 })
-    if (onScreen(depot)) this.text('SELL', depot.x, depot.y, 16, '#FFF', true)
+    depot.y = Math.max(column.y + column.h + 18, depot.y)
+    this.boxes.sell = null
+    if (depot.y < project({ x: DEPOT.x, y: DEPOT.y + 44 }).y) {
+      this.text('SELL', depot.x, depot.y, 16, '#FFF', true)
+      const w = this.context.measureText('SELL').width
+      this.boxes.sell = { x: depot.x - w / 2, y: depot.y - 14, w, h: 18 }
+    }
 
     const icons: Record<UpgradeId, string> = { pick: '⛏', pack: '🎒', boots: '👢', swing: '💪', reach: '🧲', cart: '🛒' }
     for (const id of Object.keys(SHOP) as UpgradeId[]) {
@@ -552,12 +575,12 @@ export class Renderer {
       const affordable = !maxed && state.save.coins >= price
       const spot = project({ x: SHOP[id].x, y: SHOP[id].y + 2 })
       if (!onScreen(spot)) continue
-      this.text(maxed ? `${icons[id]}${level} MAX` : `${icons[id]}${level} · ${price}`, spot.x, spot.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `${icons[id]}${level} MAX` : `${icons[id]}${level} · ${price}`, spot.x, spot.y, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
     }
 
     for (const spot of CHUTES) {
       const at = project({ x: spot.x, y: spot.y - 34 })
-      if (onScreen(at)) this.text('CHUTE ↑', at.x, at.y, 13, 'rgba(244,235,221,.9)', true)
+      if (onScreen(at)) this.text('CHUTE ↑', at.x, at.y, 14, 'rgba(244,235,221,.9)', true)
     }
 
     const hire = project({ x: HELPER_PAD.x, y: HELPER_PAD.y + 2 })
@@ -566,7 +589,7 @@ export class Renderer {
       const maxed = mine.helpers >= HELPER_PRICES.length
       const price = maxed ? 0 : HELPER_PRICES[mine.helpers] * mineMultiplier(state.save.mine)
       const affordable = !maxed && state.save.coins >= price
-      this.text(maxed ? `👷${mine.helpers} MAX` : `👷${mine.helpers} · $${price}`, hire.x, hire.y, 13, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
+      this.text(maxed ? `👷${mine.helpers} MAX` : `👷${mine.helpers} · $${price}`, hire.x, hire.y, 14, maxed ? '#6E6A5E' : affordable ? '#1F6B42' : '#A04848', true)
     }
 
     // the travel shaft banner: visible once both gates are open in this mine
@@ -581,7 +604,7 @@ export class Renderer {
         ctx.fillStyle = 'rgba(61,50,48,.88)'
         cssRound(ctx, shaft.x - 100, shaft.y - 18, 200, 46, 12)
         if (pickLevel < needPick) {
-          this.text(`NEXT MINE: PICK LV${needPick} NEEDED`, shaft.x, shaft.y + 2, 13, '#F5A9A0', true)
+          this.text(`NEXT MINE: PICK LV${needPick} NEEDED`, shaft.x, shaft.y + 2, 14, '#F5A9A0', true)
         } else {
           this.text(`NEXT MINE  $${price - paid}`, shaft.x, shaft.y - 1, 14, '#FFD45E', true)
           ctx.fillStyle = 'rgba(255,255,255,.25)'
@@ -609,7 +632,7 @@ export class Renderer {
         cssRound(ctx, spot.x - 82, spot.y + 6, 164, 10, 5)
         ctx.fillStyle = PALETTE.coin
         if (fill > 0) cssRound(ctx, spot.x - 82, spot.y + 6, 164 * fill, 10, 5)
-        this.text(`MONUMENT ${state.save.monument + 1}/5  $${remaining}`, spot.x, spot.y, 13, '#FFF', true)
+        this.text(`MONUMENT ${state.save.monument + 1}/5  $${remaining}`, spot.x, spot.y, 14, '#FFF', true)
       }
     }
 
@@ -633,9 +656,21 @@ export class Renderer {
     }
   }
 
+  /** the always-on top-left column: coins, pack, the narrow contract line
+   *  when there is no room top-center, then the depth pill. world labels
+   *  clamp against this box so nothing a kid must read hides under it */
+  private hudColumn(state: GameState, view: Viewport): Box & { narrow: boolean } {
+    const pad = 14
+    const narrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - pad * 3 - 132) < 150
+    const depthTop = pad + (narrow ? 126 : 88)
+    return { x: pad, y: pad, w: narrow ? 210 : 132, h: depthTop + 26 - pad + this.noteInset, narrow }
+  }
+
   private drawHud(state: GameState, view: Viewport): void {
     const ctx = this.context
     const pad = 14
+    const column = this.hudColumn(state, view)
+    this.boxes.column = column
     // coins pill
     ctx.fillStyle = this.tokens.raised
     cssRound(ctx, pad, pad, 132, 40, 20)
@@ -649,12 +684,17 @@ export class Renderer {
     cssRound(ctx, pad, pad + 48, 132, 32, 16)
     this.text(`⛏ ${state.stack.length}/${capacity(state)}${full ? ' FULL' : ''}`, pad + 66, pad + 69, 14, full ? this.tokens.warn : this.tokens.ink, true)
 
-    // contract card: the goal, top-center, always readable
+    // contract card: the goal, always readable. the titled card with its bar
+    // centers when the screen has room and docks right of the coins pill on
+    // a phone; only a very narrow screen gets the one-line fallback below
     const contract = state.save.contract
+    const contractWidth = Math.min(250, view.cssWidth - pad * 3 - 132)
+    this.contractTitled = Boolean(contract) && !column.narrow
     if (contract) {
-      const width = Math.min(250, view.cssWidth - 300)
-      const cx = view.cssWidth / 2 + 30
-      if (width > 150) {
+      const width = contractWidth
+      const left = Math.max(pad * 2 + 132, Math.min(view.cssWidth / 2 + 30 - width / 2, view.cssWidth - pad - width))
+      const cx = left + width / 2
+      if (this.contractTitled) {
         ctx.fillStyle = this.alpha(this.tokens.ink,.86)
         cssRound(ctx, cx - width / 2, pad, width, 62, this.tokens.radius * .875)
         this.text(`DELIVER ${contract.need} ${ORE_LABEL[contract.ore]}`, cx, pad + 20, 14, this.tokens.raised, true)
@@ -663,32 +703,46 @@ export class Renderer {
         ctx.fillStyle = PALETTE.ore[contract.ore]
         const fill = Math.min(1, contract.done / contract.need)
         if (fill > 0) cssRound(ctx, cx - width / 2 + 12, pad + 30, (width - 24) * fill, 10, 5)
-        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 13, this.tokens.accent, true)
+        this.text(`${contract.done}/${contract.need}  ·  BONUS $${contract.reward}`, cx, pad + 54, 14, this.tokens.accent, true)
       } else {
         // very narrow: compact one-line card below the coins
         ctx.fillStyle = this.alpha(this.tokens.ink,.86)
         cssRound(ctx, pad, pad + 88, 210, 30, this.tokens.radius * .75)
-        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 13, this.tokens.accent, true)
+        this.text(`${ORE_LABEL[contract.ore]} ${contract.done}/${contract.need} → $${contract.reward}`, pad + 105, pad + 108, 14, this.tokens.accent, true)
       }
     }
-    // depth status lives in the top-left column with the other always-on hud:
-    // the bottom strip belongs to conditional pills (coach, sound) and the nav
-    const contractNarrow = Boolean(state.save.contract) && Math.min(250, view.cssWidth - 300) <= 150
-    const depthY = contractNarrow ? pad + 132 : pad + 100
-    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 60, depthY, 13, this.alpha(this.tokens.ink,.75), true)
-    // the first-minute coach: two lessons for a fresh save, advanced by the
-    // real actions, drawn in the same hud language as everything else
+    // depth status lives in the top-left column with the other always-on hud,
+    // on its own raised pill so it never prints bare across whatever the world
+    // has scrolled under the column (the hut, after the first walk). the
+    // bottom strip belongs to conditional pills (coach, sound) and the nav
+    // the column's height reserves noteInset for the save note; the pill stays above it
+    const depthTop = column.y + column.h - 26 - this.noteInset
+    ctx.fillStyle = this.tokens.raised
+    cssRound(ctx, pad, depthTop, 132, 26, 13)
+    this.boxes.depth = { x: pad, y: depthTop, w: 132, h: 26 }
+    this.text(`MINE ${state.save.mine + 1} · ZONE ${Math.min(3, currentMine(state.save).gates + 1)}/3`, pad + 66, depthTop + 18, 14, this.tokens.ink, true)
+    // the first-minute coach: three lessons for a fresh save, advanced by the
+    // real actions, drawn in the same hud language as everything else. the
+    // sell beat points at the hut from wherever the miner stands.
+    this.boxes.coach = null
     if (this.coachStep) {
+      const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗']
+      const toHut = Math.atan2(DEPOT.y - state.player.y, DEPOT.x - state.player.x)
+      const text = this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE'
+        : this.coachStep === 'mine' ? 'WALK UP TO A ROCK ⛏'
+        : `CARRY IT TO SELL ${arrows[Math.round(toHut / (Math.PI / 4)) & 7]}`
+      const box = { x: view.cssWidth / 2 - 110, y: view.cssHeight - this.bottomInset - 96, w: 220, h: 34 }
       ctx.fillStyle = this.alpha(this.tokens.ink,.85)
-      cssRound(ctx, view.cssWidth / 2 - 110, view.cssHeight - this.bottomInset - 96, 220, 34, 17)
-      this.text(this.coachStep === 'move' ? 'DRAG ANYWHERE TO MOVE' : 'WALK UP TO A ROCK ⛏', view.cssWidth / 2, view.cssHeight - this.bottomInset - 73, 14, this.tokens.accent)
+      cssRound(ctx, box.x, box.y, box.w, box.h, 17)
+      this.text(text, view.cssWidth / 2, box.y + 23, 14, this.tokens.accent)
+      this.boxes.coach = { text, box }
     }
     // sound status, only when something is off: muted or never woken
     const soundState = this.audioState()
     if (soundState !== 'running') {
       ctx.fillStyle = this.alpha(this.tokens.ink,.75)
       cssRound(ctx, view.cssWidth / 2 - 92, view.cssHeight - this.bottomInset - 44, 184, 30, 15)
-      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 13, this.tokens.raised)
+      this.text(soundState === 'muted' ? 'SOUND OFF 🔇' : 'TAP FOR SOUND 🔊', view.cssWidth / 2, view.cssHeight - this.bottomInset - 24, 14, this.tokens.raised)
     }
   }
 
@@ -721,10 +775,11 @@ export class Renderer {
     ctx.restore()
   }
 
-  /** css-px text with a floor of 13: nothing on screen is ever smaller */
+  /** css-px text with a floor of 14: nothing on screen is ever smaller */
   private text(value: string, x: number, y: number, size: number, color: string, stroke = false): void {
     const ctx = this.context
-    const px = Math.max(13, size)
+    const px = Math.max(14, size)
+    this.smallestText = Math.min(this.smallestText, px)
     ctx.font = `800 ${px}px ${this.tokens.font}`
     ctx.textAlign = 'center'
     if (stroke) {

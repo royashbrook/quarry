@@ -10,7 +10,11 @@
 import { execSync } from 'node:child_process'
 
 const FILE = 'src/engine.ts'
-const BASELINE = '07b31a41d02b4a678710e60fada4e40fbb4bc7aa'
+// 302088b is main's engine as of #38 (two rocks moved off the pads, 2026-09-05),
+// taken byte for byte when main was merged into the conversion. the conversion
+// itself never edited the engine: the previous baseline 07b31a41 was the same
+// file before that rock move.
+const BASELINE = '302088b77fb2f64a471c4101a7547959c9b605ba'
 
 const actual = execSync(`git rev-parse HEAD:${FILE}`, { encoding: 'utf8' }).trim()
 

@@ -2,7 +2,7 @@
   import { createGame, runFor, step, WORLD, type GameState, type Point } from '../engine'
   import { Controls } from '../input'
   import { Renderer } from '../render'
-  import { loadSave, storeSave } from '../save'
+  import { loadSave, SAVE_KEY, storage, storeSave } from '../save'
   import { backingSize, computeViewport, VIEW, type Viewport } from '../viewport'
   import { Audio } from './audio'
   import type { QuarryHooks } from '../app.d.ts'
@@ -16,7 +16,7 @@
     paused = $bindable(false),
     muted = $bindable(false),
     toggleMute = $bindable(),
-    beginReset = $bindable(),
+    resetSave = $bindable(),
     onplay = $bindable(),
     measureNav = $bindable(),
     api = $bindable(),
@@ -24,9 +24,11 @@
     paused?: boolean
     muted?: boolean
     toggleMute?: () => void
-    // armed by the chrome BEFORE it wipes the save: once fired, nothing may write the
-    // save again, or the running loop (and pagehide) rewrites the file we just deleted
-    beginReset?: () => void
+    // the chrome's reset: arms the loop (nothing may write the save again, or the
+    // running loop and pagehide rewrite the file we just deleted), then removes the
+    // durable copy. true only when the store confirmed it is gone, which is the only
+    // case a reload makes sense; on false the arm is undone and play goes on from memory
+    resetSave?: () => boolean
     // PLAY hands back the two things the renderer needs: the nav's height, and the
     // coached first-run beats
     onplay?: (navHeight: number) => void
@@ -38,6 +40,10 @@
   } = $props()
 
   let canvas: HTMLCanvasElement
+  // the honest chip: up while the last save write was refused (a full or blocked
+  // store), in a slot the hud column reserves for it. the frame loop owns it like it
+  // owns the canvas: hidden and top are set there, not through svelte state.
+  let saveNote: HTMLElement | undefined
   const state: GameState = createGame(loadSave())
   let viewport: Viewport = computeViewport(innerWidth, innerHeight, devicePixelRatio)
   let cameraY = 0
@@ -66,9 +72,16 @@
     const renderer = new Renderer(canvas)
     renderer.audioState = () => audio.hudState() // the player-facing readout, not the raw one
 
-    // arm the reset: from here the loop and pagehide must never write again, or they
-    // resurrect the save the chrome is about to delete
-    beginReset = () => { resetting = true }
+    // the reset: arm first, so the loop and pagehide never write again and resurrect
+    // the save we are deleting. then the reload is the chrome's, and only once the
+    // durable copy is confirmed gone; a store that refuses the removal would hand the
+    // old save straight back on reload, under a button that said reset.
+    resetSave = () => {
+      resetting = true
+      if (storage.removeItem(SAVE_KEY)) return true
+      resetting = false
+      return false
+    }
 
     api = {
       snapshot: () => structuredClone(state),
@@ -123,6 +136,9 @@
     let saveClock = 0
 
     function frame(now: number): void {
+      // the next frame is booked BEFORE the work, so a throw anywhere below can never
+      // end the animation chain: a dead chain is a silent freeze, an error in the
+      // console is not (main.ts got the same guarantee from a try/finally)
       rafId = requestAnimationFrame(frame)
       const elapsed = Math.min(0.05, (now - previous) / 1000)
       previous = now
@@ -130,13 +146,22 @@
         step(state, elapsed, controls.vector)
         updateCamera(elapsed)
       }
-      // the coached beats advance on the real action: walk far enough, then mine
+      // the coached beats advance on the real action: walk far enough, mine, then
+      // carry it to the hut; the whole thing never appears again once lifetime coins exist
       if (renderer.coachStep === 'move' && coachOrigin
         && Math.hypot(state.player.x - coachOrigin.x, state.player.y - coachOrigin.y) > 60) renderer.coachStep = 'mine'
-      if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = null
+      if (renderer.coachStep === 'mine' && state.stack.length > 0) renderer.coachStep = 'sell'
+      if (renderer.coachStep === 'sell' && state.save.lifetime > 0) renderer.coachStep = null
       state.pings.splice(0).forEach(ping => audio.bleep(ping)) // drain feel events even while paused
       audio.idleCheck()
+      // the column reserves the chip's row while the chip is up, so the SELL sign
+      // clamps below both; measured each frame because the chip's height is the dom's
+      renderer.noteInset = saveNote && !saveNote.hidden ? saveNote.offsetHeight + 6 : 0
       renderer.draw(state, controls.joystick, viewport, cameraY)
+      if (saveNote && !saveNote.hidden) {
+        const column = renderer.boxes.column
+        saveNote.style.top = `${column.y + column.h - renderer.noteInset + 6}px`
+      }
       // the autosave is NOT pause-gated, exactly as main.ts had it. gating it looked
       // tidy and quietly changed persistence: advance() mutates state while paused by
       // design (it is the deterministic clock), so a pause gate means that progress
@@ -145,6 +170,9 @@
       if (saveClock >= 1 && !resetting) {
         saveClock = 0
         storeSave(state.save)
+        // a refused write used to be invisible: play went on and the progress died
+        // with the tab. say so while it is true, and only while it is true.
+        if (saveNote) saveNote.hidden = !storage.hasRefused()
       }
     }
     rafId = requestAnimationFrame(frame)
@@ -170,6 +198,8 @@
         coachStep: () => renderer.coachStep,
         bottomInset: () => renderer.bottomInset,
         forceAudioIdle: () => audio.forceIdle(),
+        hud: () => structuredClone(renderer.boxes),
+        render: () => ({ smallestText: renderer.smallestText, contractTitled: renderer.contractTitled }),
       }
       window.__quarry = installed
       // deterministic readiness: vanilla installed the hook synchronously on module
@@ -202,6 +232,7 @@
 </script>
 
 <canvas id="game" bind:this={canvas} aria-label="the quarry"></canvas>
+<p id="save-note" class="save-note" role="status" hidden bind:this={saveNote}>not saving on this device</p>
 
 <style>
   #game { display: block; width: 100%; height: 100dvh; touch-action: none; }

@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process'
 // tag, so a 3-part tag yields a 4-part stamp and breaks the canonical vX.Y.Z. the
 // no-tag fallback is numeric 0.0.<commit-count> so it satisfies the same anchored
 // ^\d+\.\d+\.\d+$ gate the build asserts (a 0.0.0-dev+sha suffix would fail it).
-function appVersion() {
+export function appVersion() {
   try {
     const tag = execSync('git describe --tags --abbrev=0', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
     const since = execSync(`git rev-list ${tag}..HEAD --count`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()

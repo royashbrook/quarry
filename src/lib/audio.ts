@@ -8,6 +8,8 @@
 // AudioContext plus its two wake listeners are exactly the kind of thing that survives
 // an unmount and leaks. destroy() closes the context and drops every listener.
 
+import { storage } from '../save'
+
 const MUTE_KEY = 'quarry_mute'
 
 const TONES: Record<string, [number, number, OscillatorType]> = {
@@ -20,7 +22,7 @@ const TONES: Record<string, [number, number, OscillatorType]> = {
 }
 
 export class Audio {
-  muted = localStorage.getItem(MUTE_KEY) === '1'
+  muted = storage.getItem(MUTE_KEY) === '1' // the guarded accessor: a blocked store never stops play
   private ctx: AudioContext | null = null
   private lastBleepAt = 0
   private idleSuspended = false
@@ -59,7 +61,7 @@ export class Audio {
 
   toggleMute(): boolean {
     this.muted = !this.muted
-    localStorage.setItem(MUTE_KEY, this.muted ? '1' : '0')
+    storage.setItem(MUTE_KEY, this.muted ? '1' : '0')
     return this.muted
   }
 

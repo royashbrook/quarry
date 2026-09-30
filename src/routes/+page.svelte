@@ -18,7 +18,7 @@
   // components without connecting them here is exactly how the reset-arming and the
   // nav inset shipped as dead code: the props existed, nothing ever called them.
   let toggleMute: (() => void) | undefined = $state()
-  let beginReset: (() => void) | undefined = $state()
+  let resetSave: (() => boolean) | undefined = $state()
   let onplay: ((navHeight: number) => void) | undefined = $state()
   let measureNav: ((navHeight: number) => void) | undefined = $state()
   let api: GameApi | undefined = $state()
@@ -27,7 +27,7 @@
 <svelte:head><title>Quarry</title></svelte:head>
 
 <main>
-  <Game bind:paused bind:muted bind:toggleMute bind:beginReset bind:onplay bind:measureNav bind:api />
+  <Game bind:paused bind:muted bind:toggleMute bind:resetSave bind:onplay bind:measureNav bind:api />
   <Shell
     bind:paused
     bind:muted
@@ -35,7 +35,7 @@
     onmute={() => toggleMute?.()}
     onplay={height => onplay?.(height)}
     measureNav={height => measureNav?.(height)}
-    beginReset={() => beginReset?.()}
+    resetSave={() => resetSave?.() ?? false}
     {api}
   />
 </main>

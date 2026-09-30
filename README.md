@@ -6,7 +6,7 @@ gate, dig deeper. three zones, five ores, no fail state.
 - free. no ads, no purchases, no accounts.
 - works offline once loaded (it's a pwa, add it to the home screen).
 - one thumb to play: drag to walk, everything else happens by standing near it.
-- your save can hop devices with a QR code from the pickaxe button.
+- your save can hop devices with a QR code: MORE, then SAVE QR.
 
 all art is drawn in code (canvas vectors), the logo included.
 

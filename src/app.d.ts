@@ -1,4 +1,5 @@
 import type { GameState, Point } from './engine'
+import type { Renderer } from './render'
 import type { Viewport } from './viewport'
 
 // the playwright suite drives the game through this hook (camera/offline/menu/audio/
@@ -22,11 +23,15 @@ export interface QuarryHooks {
   setTime: (seconds: number) => void
   audioState: () => string
   /** the first-run coach beat, so a spec can prove a resize does not restart it */
-  coachStep: () => 'move' | 'mine' | null
+  coachStep: () => 'move' | 'mine' | 'sell' | null
   /** css px reserved for the bottom nav, so a spec can prove resize remeasures it */
   bottomInset: () => number
   /** test-only: force audio idle-suspension, so the wake repair is provable */
   forceAudioIdle: () => void
+  /** last-frame screen boxes of the hud column, depth pill, SELL sign and coach */
+  hud: () => Renderer['boxes']
+  /** the smallest css px any text drew at, and whether the contract drew titled */
+  render: () => { smallestText: number; contractTitled: boolean }
 }
 
 /** the same-document mount/unmount hook +layout.svelte installs under the same gate,

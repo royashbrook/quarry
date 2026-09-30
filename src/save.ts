@@ -3,10 +3,44 @@ import { defaultSave, migrateV1, type SaveV1, type SaveV2 } from './engine'
 export const SAVE_KEY = 'quarry_save_v1'
 const PREFIX = 'qy1.'
 
-export function loadSave(storage: Pick<Storage, 'getItem'> = localStorage): SaveV2 {
+// a browser that blocks site data throws on the localStorage GETTER itself, and
+// a full store throws on setItem. every storage touch goes through here so a
+// refusal never stops play: the session just lives in memory instead.
+const memory = new Map<string, string>()
+// a key whose last write localStorage refused: memory holds the truth for it until a
+// write gets through again, so a same-session read never returns the stale copy
+const refused = new Set<string>()
+export const storage = {
+  getItem(key: string): string | null {
+    if (refused.has(key)) return memory.get(key) ?? null
+    try { return localStorage.getItem(key) } catch { return memory.get(key) ?? null }
+  },
+  setItem(key: string, value: string): void {
+    memory.set(key, value)
+    try { localStorage.setItem(key, value); refused.delete(key) } catch { refused.add(key) }
+  },
+  // true only when the store confirmed no durable copy is left to come back on
+  // reload. a store that refuses the removal, or cannot be read afterwards,
+  // may still hold the old value, so that is false and the session's memory
+  // copy stays put: the caller must not reload, and play goes on from memory
+  removeItem(key: string): boolean {
+    try {
+      localStorage.removeItem(key)
+      if (localStorage.getItem(key) !== null) return false
+    } catch { return false }
+    memory.delete(key); refused.delete(key)
+    return true
+  },
+  // the last write to some key never reached the store: this session is unsaved
+  hasRefused(): boolean {
+    return refused.size > 0
+  },
+}
+
+export function loadSave(store: Pick<Storage, 'getItem'> = storage): SaveV2 {
   const fallback = defaultSave()
   try {
-    const parsed = JSON.parse(storage.getItem(SAVE_KEY) || '') as Partial<SaveV1> | Partial<SaveV2>
+    const parsed = JSON.parse(store.getItem(SAVE_KEY) || '') as Partial<SaveV1> | Partial<SaveV2>
     if (parsed.version === 1) return migrateV1({ ...emptyV1(), ...(parsed as Partial<SaveV1>), version: 1 })
     if (parsed.version !== 2) return fallback
     const v2 = parsed as Partial<SaveV2>
@@ -34,8 +68,9 @@ function emptyV1(): SaveV1 {
   }
 }
 
-export function storeSave(save: SaveV2, storage: Pick<Storage, 'setItem'> = localStorage): void {
-  storage.setItem(SAVE_KEY, JSON.stringify({ ...save }))
+export function storeSave(save: SaveV2, store: Pick<Storage, 'setItem'> = storage): void {
+  // called from the frame loop: a throw here would end the animation chain
+  try { store.setItem(SAVE_KEY, JSON.stringify({ ...save })) } catch { /* the write is lost, the frame is not */ }
 }
 
 export async function encodeSave(save: SaveV2): Promise<string> {

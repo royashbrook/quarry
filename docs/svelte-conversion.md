@@ -46,8 +46,11 @@ a subtle edit that keeps tests green still breaks the load-bearing guarantee. so
 conversion PR pins it mechanically, the same way the pilot blob-checked its 15 engine
 files:
 
-- baseline: `src/engine.ts` blob **`07b31a41d02b4a678710e60fada4e40fbb4bc7aa`**
-  (verified on origin/main and the conversion branch, 2026-08-21).
+- baseline: `src/engine.ts` blob **`302088b77fb2f64a471c4101a7547959c9b605ba`**, main's
+  engine as of #38 (two rocks moved off the pads), taken byte for byte when main was
+  merged into the branch on 2026-09-29. the conversion's own baseline was `07b31a41`
+  (verified on origin/main and the branch, 2026-08-21), the same file before that move;
+  the conversion never edited the engine.
 - CI asserts `git rev-parse HEAD:src/engine.ts` equals that blob. if the engine ever
   legitimately changes (shootit-style tuning), the pin updates in the SAME commit
   with the why, so the change is deliberate and visible, never silent.
