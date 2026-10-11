@@ -90,8 +90,7 @@ viewport, builds `Renderer` + `Controls`, runs the RAF loop, exposes the
 
 the new fleet requirement: everything skinnable, structure fixed, look a swappable
 layer. the concrete mechanism is the shared standard at kidgames
-`docs/shell-theme-tokens.md`
-(https://github.com/royashbrook/kidgames/blob/main/docs/shell-theme-tokens.md). quarry
+`docs/shell-theme-tokens.md`. quarry
 is the first game to bake the SHELL theme layer in, so it is the reference implementation
 that the standard extracts from.
 
